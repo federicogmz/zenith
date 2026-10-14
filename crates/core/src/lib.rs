@@ -1,5 +1,8 @@
 //! `zenith-core`: Modelos geométricos fundamentales, álgebra 3D y proyecciones de cámara para Zenith.
 
+pub mod projection;
+pub use projection::{Ellipsoid, TransverseMercator};
+
 use serde::{Deserialize, Serialize};
 use std::ops::{Add, Mul, Sub};
 

@@ -1,6 +1,12 @@
 //! `zenith-io`: Parser de georreferenciación (`geo.txt`), metadatos de cámaras
 //! y serialización del manifiesto de conformidad con el Contrato del Motor Fotogramétrico.
 
+pub mod dji_xmp;
+pub use dji_xmp::{
+    extract_dji_xmp_from_bytes, extract_dji_xmp_from_file, scan_flight_directory, DjiMetadata,
+    FlightScanResult, XmpError,
+};
+
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use thiserror::Error;
