@@ -1,0 +1,21 @@
+[package]
+name = "zenith-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Command-line interface for the Zenith photogrammetric engine"
+
+[[bin]]
+name = "zenith"
+path = "src/main.rs"
+
+[dependencies]
+zenith-core = { path = "../core" }
+zenith-dem = { path = "../dem" }
+zenith-ortho = { path = "../ortho" }
+zenith-io = { path = "../io" }
+clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+env_logger = "0.11"
+log = "0.4"

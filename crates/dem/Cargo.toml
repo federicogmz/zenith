@@ -1,0 +1,10 @@
+[package]
+name = "zenith-dem"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "In-memory continuous DEM window reader, bilinear elevation interpolation, and ray marching for Zenith"
+
+[dependencies]
+zenith-core = { path = "../core" }
+thiserror = "1.0"

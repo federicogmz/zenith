@@ -1,0 +1,10 @@
+[package]
+name = "zenith-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Core geometric models, camera pinhole intrinsics, and ray vectors for Zenith"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "1.0"

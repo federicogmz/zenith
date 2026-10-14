@@ -1,0 +1,13 @@
+[package]
+name = "zenith-ortho"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "High-performance direct 2.5D orthorectification engine with rayon multithreading for Zenith"
+
+[dependencies]
+zenith-core = { path = "../core" }
+zenith-dem = { path = "../dem" }
+rayon = "1.10"
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "1.0"
