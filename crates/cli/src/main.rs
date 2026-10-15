@@ -5,9 +5,9 @@ use clap::{Parser, Subcommand};
 use log::info;
 use std::path::PathBuf;
 use std::time::Instant;
-use zenith_core::{CameraIntrinsics, CameraPose, Vector3};
+use zenith_core::{CameraBasis, CameraIntrinsics, CameraPose, TransverseMercator, Vector3};
 use zenith_dem::DemWindow;
-use zenith_io::{parse_geo_txt, EngineManifest};
+use zenith_io::{parse_geo_txt, scan_flight_directory, EngineManifest};
 use zenith_ortho::{DirectOrthoEngine, ImageFrame, OrthoConfig, ResamplingMethod};
 
 #[derive(Parser, Debug)]
@@ -26,6 +26,29 @@ struct Cli {
 enum Commands {
     /// Muestra información del motor, arquitectura y niveles de contrato soportados
     Info,
+
+    /// Procesa una misión completa con imágenes DJI y DTM (cálculo de huellas 3D y telemetría)
+    Mission {
+        /// Directorio con las imágenes térmicas o visuales
+        #[arg(short, long)]
+        images: PathBuf,
+
+        /// Ruta al encabezado del DTM (.hdr de ENVI)
+        #[arg(long)]
+        dtm_hdr: PathBuf,
+
+        /// Ruta a los datos binarios del DTM (.raw/.bin de ENVI)
+        #[arg(long)]
+        dtm_raw: PathBuf,
+
+        /// Ruta de salida para el GeoJSON de footprints y telemetría
+        #[arg(short, long, default_value = "mission_footprints.geojson")]
+        output: PathBuf,
+
+        /// Desplazamiento geoidal N en metros (por defecto 0.0 si DTM y GNSS son consistentes)
+        #[arg(long, default_value_t = 0.0)]
+        datum_offset: f64,
+    },
 
     /// Ejecuta el pipeline de ortorrectificación directa 2.5D
     Ortho {
@@ -108,6 +131,143 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Soporte de Sensores: DJI Zenmuse H20T, Matrice 30T (M3T), FLIR Vue Pro R");
             println!("Datum Vertical: Ajuste ortométrico automático (H = h - N)");
             println!("Contrato de Interoperabilidad: Compatible con RAPTOR v1.0");
+        }
+
+        Commands::Mission {
+            images,
+            dtm_hdr,
+            dtm_raw,
+            output,
+            datum_offset,
+        } => {
+            let t0 = Instant::now();
+            info!("Iniciando procesamiento de misión con Zenith...");
+            info!("Escaneando imágenes desde: {}", images.display());
+            let scan = scan_flight_directory(&images)?;
+            info!(
+                "Fotogramas válidos encontrados: {}, Errores: {}",
+                scan.frames.len(),
+                scan.errors.len()
+            );
+
+            info!("Cargando DTM en memoria desde: {}", dtm_hdr.display());
+            let dem = DemWindow::from_envi_raw(&dtm_hdr, &dtm_raw, datum_offset)?;
+            info!(
+                "DTM cargado: {} x {} celdas a {:.2} m de resolución",
+                dem.width, dem.height, dem.cell_size_x
+            );
+
+            let tm = TransverseMercator::colombia_origen_nacional();
+            let intrinsics = CameraIntrinsics::dji_m3t_thermal();
+
+            let mut features = Vec::new();
+            let mut valid_intersections = 0;
+            let mut total_agl = 0.0;
+
+            for frame in &scan.frames {
+                let (cam_x, cam_y, gamma) = tm.forward(frame.lon, frame.lat);
+                let cam_z = frame.abs_alt - datum_offset;
+                let cam_pos = Vector3::new(cam_x, cam_y, cam_z);
+
+                // Corregir yaw con la convergencia de meridianos
+                let yaw_grid = frame.yaw + gamma;
+                let basis = CameraBasis::from_gimbal(yaw_grid, frame.pitch, frame.roll);
+
+                // Centro de la imagen
+                let center_ray = basis.pixel_to_ray(320.0, 256.0, cam_pos, &intrinsics);
+                let center_impact = dem.intersect_ray(&center_ray, 3000.0, 16);
+
+                // Cuatro esquinas de la imagen: (0,0), (640,0), (640,512), (0,512)
+                let c1 = basis.pixel_to_ray(0.0, 0.0, cam_pos, &intrinsics);
+                let c2 = basis.pixel_to_ray(640.0, 0.0, cam_pos, &intrinsics);
+                let c3 = basis.pixel_to_ray(640.0, 512.0, cam_pos, &intrinsics);
+                let c4 = basis.pixel_to_ray(0.0, 512.0, cam_pos, &intrinsics);
+
+                let p1 = dem.intersect_ray(&c1, 3000.0, 16);
+                let p2 = dem.intersect_ray(&c2, 3000.0, 16);
+                let p3 = dem.intersect_ray(&c3, 3000.0, 16);
+                let p4 = dem.intersect_ray(&c4, 3000.0, 16);
+
+                let mut agl = -9999.0;
+                if let Some(ci) = center_impact {
+                    valid_intersections += 1;
+                    agl = cam_z - ci.z;
+                    total_agl += agl;
+                }
+
+                // Generar Feature GeoJSON con coordenadas proyectadas y atributos
+                let mut coords = Vec::new();
+                if let (Some(pt1), Some(pt2), Some(pt3), Some(pt4)) = (p1, p2, p3, p4) {
+                    coords.push(vec![pt1.x, pt1.y]);
+                    coords.push(vec![pt2.x, pt2.y]);
+                    coords.push(vec![pt3.x, pt3.y]);
+                    coords.push(vec![pt4.x, pt4.y]);
+                    coords.push(vec![pt1.x, pt1.y]);
+                }
+
+                let geom = if !coords.is_empty() {
+                    serde_json::json!({
+                        "type": "Polygon",
+                        "coordinates": [coords]
+                    })
+                } else {
+                    serde_json::json!({
+                        "type": "Point",
+                        "coordinates": [cam_x, cam_y]
+                    })
+                };
+
+                features.push(serde_json::json!({
+                    "type": "Feature",
+                    "geometry": geom,
+                    "properties": {
+                        "filename": frame.filename,
+                        "lon": frame.lon,
+                        "lat": frame.lat,
+                        "cam_x": cam_x,
+                        "cam_y": cam_y,
+                        "abs_alt": frame.abs_alt,
+                        "agl_m": agl,
+                        "yaw": frame.yaw,
+                        "pitch": frame.pitch,
+                        "roll": frame.roll,
+                        "rtk_flag": frame.rtk_flag
+                    }
+                }));
+            }
+
+            let geojson = serde_json::json!({
+                "type": "FeatureCollection",
+                "crs": {
+                    "type": "name",
+                    "properties": {
+                        "name": "EPSG:9377"
+                    }
+                },
+                "features": features
+            });
+
+            std::fs::write(&output, serde_json::to_string_pretty(&geojson)?)?;
+            let total_time = t0.elapsed();
+
+            println!("============================================================");
+            println!("  PROCESAMIENTO DE MISIÓN COMPLETADO (ZENITH)");
+            println!("============================================================");
+            println!("  Tiempo total: {:?}", total_time);
+            println!("  Fotogramas procesados: {}", scan.frames.len());
+            println!(
+                "  Intersecciones válidas con terreno: {} / {}",
+                valid_intersections,
+                scan.frames.len()
+            );
+            if valid_intersections > 0 {
+                println!(
+                    "  Altura sobre terreno (AGL) promedio: {:.2} m",
+                    total_agl / valid_intersections as f64
+                );
+            }
+            println!("  Archivo GeoJSON generado: {}", output.display());
+            println!("============================================================");
         }
 
         Commands::Ortho {
