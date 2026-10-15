@@ -1,7 +1,16 @@
-//! `zenith-dem`: Lector en memoria e interpolación bilineal de modelos de elevación (DEM/DSM)
-//! con algoritmo de intersección ray-marching y bisección continua.
-
+use std::path::Path;
+use thiserror::Error;
 use zenith_core::{Ray3D, Vector3};
+
+#[derive(Error, Debug)]
+pub enum DemError {
+    #[error("Error de E/S leyendo DEM: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Encabezado HDR inválido: {0}")]
+    InvalidHeader(String),
+    #[error("Tamaño de archivo de datos no coincide con width * height * 4 bytes")]
+    InvalidDataSize,
+}
 
 /// Ventana en memoria de un Modelo Digital de Elevación (DEM/DSM).
 #[derive(Debug, Clone)]
@@ -18,6 +27,85 @@ pub struct DemWindow {
 }
 
 impl DemWindow {
+    /// Carga un DEM directamente desde un raster binario ENU/ENVI Float32 (.hdr y .raw/.bin).
+    pub fn from_envi_raw(
+        hdr_path: impl AsRef<Path>,
+        raw_path: impl AsRef<Path>,
+        geoid_undulation_m: f64,
+    ) -> Result<Self, DemError> {
+        let hdr_text = std::fs::read_to_string(hdr_path)?;
+        let mut samples = 0usize;
+        let mut lines = 0usize;
+        let mut origin_x = 0.0f64;
+        let mut origin_y = 0.0f64;
+        let mut cell_size_x = 1.0f64;
+        let mut cell_size_y = 1.0f64;
+        let mut nodata = Some(-9999.0f32);
+
+        for line in hdr_text.lines() {
+            let line_trim = line.trim();
+            if line_trim.starts_with("samples") {
+                if let Some(val) = line_trim.split('=').nth(1) {
+                    samples = val.trim().parse().unwrap_or(0);
+                }
+            } else if line_trim.starts_with("lines") {
+                if let Some(val) = line_trim.split('=').nth(1) {
+                    lines = val.trim().parse().unwrap_or(0);
+                }
+            } else if line_trim.starts_with("data ignore value") {
+                if let Some(val) = line_trim.split('=').nth(1) {
+                    nodata = val.trim().parse().ok();
+                }
+            } else if line_trim.starts_with("map info") {
+                // Formato: map info = {projection, ref_x, ref_y, easting, northing, x_size, y_size}
+                if let Some(brace_start) = line_trim.find('{') {
+                    if let Some(brace_end) = line_trim.rfind('}') {
+                        let inner = &line_trim[brace_start + 1..brace_end];
+                        let parts: Vec<&str> = inner.split(',').map(|s| s.trim()).collect();
+                        if parts.len() >= 7 {
+                            origin_x = parts[3].parse().unwrap_or(0.0);
+                            origin_y = parts[4].parse().unwrap_or(0.0);
+                            cell_size_x = parts[5].parse().unwrap_or(1.0);
+                            cell_size_y = parts[6].parse().unwrap_or(1.0);
+                        }
+                    }
+                }
+            }
+        }
+
+        if samples == 0 || lines == 0 {
+            return Err(DemError::InvalidHeader(
+                "Dimensiones samples/lines no encontradas en .hdr".into(),
+            ));
+        }
+
+        let raw_bytes = std::fs::read(raw_path)?;
+        let expected_bytes = samples * lines * std::mem::size_of::<f32>();
+        if raw_bytes.len() != expected_bytes {
+            return Err(DemError::InvalidDataSize);
+        }
+
+        let mut data = vec![0.0f32; samples * lines];
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                raw_bytes.as_ptr() as *const f32,
+                data.as_mut_ptr(),
+                samples * lines,
+            );
+        }
+
+        Ok(Self {
+            width: samples,
+            height: lines,
+            origin_x,
+            origin_y,
+            cell_size_x,
+            cell_size_y,
+            data,
+            nodata,
+            geoid_undulation_m,
+        })
+    }
     /// Crea una ventana de DEM a partir de un arreglo plano de valores de elevación.
     #[allow(clippy::too_many_arguments)]
     pub fn new(

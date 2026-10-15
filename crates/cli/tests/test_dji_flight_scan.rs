@@ -124,3 +124,46 @@ fn test_projection_378_frames_against_oracle_csv() {
     assert!(max_err_x < 0.0005); // Error menor a 0.5 mm
     assert!(max_err_y < 0.0005); // Error menor a 0.5 mm
 }
+
+#[test]
+fn test_load_real_mission_dtm() {
+    use zenith_dem::DemWindow;
+
+    let hdr_path = Path::new(
+        "/home/fdgmz/.gemini/antigravity-ide/brain/1166a368-93be-4f04-9265-5df7ca2c7a47/scratch/barbosa_dtm.hdr",
+    );
+    let raw_path = Path::new(
+        "/home/fdgmz/.gemini/antigravity-ide/brain/1166a368-93be-4f04-9265-5df7ca2c7a47/scratch/barbosa_dtm.raw",
+    );
+
+    if !hdr_path.exists() || !raw_path.exists() {
+        eprintln!("Aviso: Raster DTM no encontrado en scratch. Saltando test de carga de DTM.");
+        return;
+    }
+
+    let t0 = std::time::Instant::now();
+    let dem = DemWindow::from_envi_raw(hdr_path, raw_path, 0.0)
+        .expect("Error cargando DTM real de Barbosa");
+    let elapsed = t0.elapsed();
+
+    println!(
+        "DTM real de Barbosa (52.7 Megapíxeles) cargado en RAM en {:?}",
+        elapsed
+    );
+    assert_eq!(dem.width, 5805);
+    assert_eq!(dem.height, 9080);
+    assert!((dem.cell_size_x - 0.1).abs() < 1e-4);
+    assert!((dem.origin_x - 4744603.1).abs() < 1e-2);
+
+    // Muestrear en el nadir del fotograma muestra: (4745001.96, 2266910.35)
+    let elev = dem
+        .sample_elevation_bilinear(4745001.9637, 2266910.3477)
+        .expect("Nadir debe caer dentro del DTM");
+
+    println!("Elevación muestreada en nadir de muestra: {:.2} m", elev);
+    // Cota real del DTM en esta cresta montañosa: 2211.55 m (rango global 1871 - 2267 m)
+    assert!(elev > 1850.0 && elev < 2300.0);
+    let agl = 2350.529 - elev;
+    println!("Altura sobre terreno AGL en la cresta: {:.2} m", agl);
+    assert!(agl > 50.0 && agl < 500.0);
+}
