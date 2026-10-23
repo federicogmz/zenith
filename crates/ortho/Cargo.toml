@@ -11,3 +11,4 @@ zenith-dem = { path = "../dem" }
 rayon = "1.10"
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "1.0"
+zune-jpeg = "0.5"
