@@ -94,6 +94,92 @@ impl DemWindow {
             );
         }
 
+        // Extrapolación de borde (Nearest-Boundary Continuation + Relajación 2D de Laplace)
+        // para celdas NoData perimetrales: preserva intacto el 100% de las celdas válidas interiores
+        // del DEM, pero evita escalones direccionales cuando el DEM recortado tiene bordes diagonales.
+        let is_valid = |v: f32| -> bool {
+            v.is_finite() && v > -500.0 && nodata.is_none_or(|nd| (v - nd).abs() > 1e-3)
+        };
+        let valid_mask: Vec<bool> = data.iter().copied().map(is_valid).collect();
+        let has_invalid = valid_mask.iter().any(|&ok| !ok);
+        let has_valid = valid_mask.iter().any(|&ok| ok);
+
+        if has_invalid && has_valid {
+            // Pasada 1: Propagación horizontal por fila (izquierda -> derecha y derecha -> izquierda)
+            for r in 0..lines {
+                let row_start = r * samples;
+                let row = &mut data[row_start..row_start + samples];
+                let mut last = None;
+                for item in row.iter_mut() {
+                    if is_valid(*item) {
+                        last = Some(*item);
+                    } else if let Some(val) = last {
+                        *item = val;
+                    }
+                }
+                let mut next = None;
+                for item in row.iter_mut().rev() {
+                    if is_valid(*item) {
+                        next = Some(*item);
+                    } else if let Some(val) = next {
+                        *item = val;
+                    }
+                }
+            }
+
+            // Pasada 2: Propagación vertical para filas completamente vacías en el borde superior/inferior
+            let mut last_valid_row: Option<usize> = None;
+            for r in 0..lines {
+                let row_start = r * samples;
+                if is_valid(data[row_start]) {
+                    last_valid_row = Some(r);
+                } else if let Some(src_r) = last_valid_row {
+                    let src_start = src_r * samples;
+                    for c in 0..samples {
+                        data[row_start + c] = data[src_start + c];
+                    }
+                }
+            }
+            let mut next_valid_row: Option<usize> = None;
+            for r in (0..lines).rev() {
+                let row_start = r * samples;
+                if is_valid(data[row_start]) {
+                    next_valid_row = Some(r);
+                } else if let Some(src_r) = next_valid_row {
+                    let src_start = src_r * samples;
+                    for c in 0..samples {
+                        data[row_start + c] = data[src_start + c];
+                    }
+                }
+            }
+
+            // Pasada 3: Relajación armónica 2D de Laplace (Gauss-Seidel, 36 iteraciones) exclusivamente
+            // sobre las celdas originalmente NoData para eliminar discontinuidades de barrido 1D.
+            if lines >= 3 && samples >= 3 {
+                for _iter in 0..36 {
+                    for r in 0..lines {
+                        let r_up = r.saturating_sub(1);
+                        let r_dn = (r + 1).min(lines - 1);
+                        let row_off = r * samples;
+                        let up_off = r_up * samples;
+                        let dn_off = r_dn * samples;
+                        for c in 0..samples {
+                            let idx = row_off + c;
+                            if !valid_mask[idx] {
+                                let c_lt = c.saturating_sub(1);
+                                let c_rt = (c + 1).min(samples - 1);
+                                data[idx] = 0.25
+                                    * (data[up_off + c]
+                                        + data[dn_off + c]
+                                        + data[row_off + c_lt]
+                                        + data[row_off + c_rt]);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         Ok(Self {
             width: samples,
             height: lines,
@@ -134,6 +220,31 @@ impl DemWindow {
             data,
             nodata,
             geoid_undulation_m,
+        }
+    }
+
+    /// Crea un plano de elevación constante sobre una extensión geográfica especificada.
+    pub fn from_flat(
+        min_x: f64,
+        max_x: f64,
+        min_y: f64,
+        max_y: f64,
+        cell_size: f64,
+        elevation: f32,
+    ) -> Self {
+        let width = ((max_x - min_x) / cell_size).ceil() as usize + 2;
+        let height = ((max_y - min_y) / cell_size).ceil() as usize + 2;
+        let data = vec![elevation; width * height];
+        Self {
+            width,
+            height,
+            origin_x: min_x,
+            origin_y: max_y,
+            cell_size_x: cell_size,
+            cell_size_y: cell_size,
+            data,
+            nodata: None,
+            geoid_undulation_m: 0.0,
         }
     }
 
@@ -198,8 +309,8 @@ impl DemWindow {
         let bottom = (1.0 - fx) * v01 as f64 + fx * v11 as f64;
         let elev_raw = (1.0 - fy) * top + fy * bottom;
 
-        // Elevación ajustada por el datum vertical si el modelo es ortométrico
-        Some(elev_raw)
+        // Elevación ajustada por el datum vertical si el modelo es ortométrico o requiere compensación
+        Some(elev_raw + self.geoid_undulation_m)
     }
 
     /// Intersecta un rayo óptico con la superficie del DEM usando ray-marching y bisección continua.

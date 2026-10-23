@@ -109,7 +109,7 @@ pub fn parse_geo_txt(content: &str) -> Result<(String, Vec<GeoEntry>), IoError> 
     Ok((crs, entries))
 }
 
-/// Manifiesto de ejecución emitido por Zenith según el Contrato Fotogramétrico.
+/// Manifiesto de ejecución emitido por Zenith según el Contrato Fotogramétrico v1.0.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EngineManifest {
     pub schema_version: String,
@@ -121,6 +121,38 @@ pub struct EngineManifest {
     pub gsd_m: f64,
     pub resampling: String,
     pub products: Vec<String>,
+
+    // Campos opcionales canónicos de Zenith v1.0
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub crs: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dem: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lrf_calibration: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub datum_vertical_offset_m: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frames_total: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frames_nadir_mapped: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frames_transit_filtered: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feather_px: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_blend_temp_diff_c: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blend_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dehaze: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thermal_extraction: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_geotiff: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_raw: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub horizontal_datum_note: Option<String>,
 }
 
 impl EngineManifest {
@@ -133,14 +165,29 @@ impl EngineManifest {
     ) -> Self {
         Self {
             schema_version: "1.0".to_string(),
-            engine_name: "Zenith".to_string(),
+            engine_name: "Zenith Direct 2.5D Photogrammetry Engine".to_string(),
             engine_version: env!("CARGO_PKG_VERSION").to_string(),
-            tier: "Level 1 Fast 2.5D".to_string(),
+            tier: "level1_rapid_ortho".to_string(),
             elapsed_seconds,
             dem_used,
             gsd_m,
             resampling: resampling.to_string(),
             products,
+            crs: None,
+            dem: None,
+            lrf_calibration: None,
+            datum_vertical_offset_m: None,
+            frames_total: None,
+            frames_nadir_mapped: None,
+            frames_transit_filtered: None,
+            feather_px: None,
+            max_blend_temp_diff_c: None,
+            blend_mode: None,
+            dehaze: None,
+            thermal_extraction: None,
+            output_geotiff: None,
+            output_raw: None,
+            horizontal_datum_note: None,
         }
     }
 
