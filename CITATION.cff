@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use this software in your research or tactical operations, please cite it as below."
+authors:
+  - family-names: "Gómez"
+    given-names: "Federico"
+    affiliation: "Universidad EAFIT"
+title: "Zenith: Ultra-Fast Direct 2.5D Photogrammetry and Radiometric Orthomosaic Engine for Tactical UAV Operations"
+version: 1.0.0
+date-released: 2026-10-22
+license: MIT
+repository-code: "https://github.com/fdgmz/zenith"
+keywords:
+  - photogrammetry
+  - rust
+  - "2.5D orthorectification"
+  - "thermal mapping"
+  - wildfire
+  - tactical-uav

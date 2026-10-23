@@ -9,11 +9,11 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
-license = "Apache-2.0 OR MIT"
+license = "MIT"
 authors = ["Federico Gómez <fjgomezc@eafit.edu.co>", "Zenith Contributors"]
-description = "High-performance direct 2.5D aerial photogrammetry and orthorectification engine in Rust"
+description = "High-performance 2.5D direct ray-casting photogrammetry engine for tactical UAV thermal and RGB orthomosaics"
 
 [profile.release]
 opt-level = 3

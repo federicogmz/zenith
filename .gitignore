@@ -16,3 +16,5 @@ Cargo.lock
 .idea/
 *.swp
 *.DS_Store
+/.agents/
+paper_support_data/
