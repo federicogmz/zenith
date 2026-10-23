@@ -8,7 +8,7 @@ title: "Zenith: Ultra-Fast Direct 2.5D Photogrammetry and Radiometric Orthomosai
 version: 1.0.0
 date-released: 2026-10-22
 license: MIT
-repository-code: "https://github.com/fdgmz/zenith"
+repository-code: "https://github.com/federicogmz/zenith"
 keywords:
   - photogrammetry
   - rust

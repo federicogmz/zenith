@@ -165,6 +165,6 @@ If you use Zenith in academic research or tactical software, please cite:
   version = {1.0.0},
   year = {2026},
   publisher = {GitHub},
-  url = {https://github.com/fdgmz/zenith}
+  url = {https://github.com/federicogmz/zenith}
 }
 ```
