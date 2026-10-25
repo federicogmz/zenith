@@ -185,59 +185,143 @@ def get_cell_color(r, c, dem_val, grid_size=24):
 
 
 def generate_emblem_svg(start_x, start_y, cell_size, grid_size=24, show_hud=True):
-    """Renders the 24x24 pixel-art DEM + overlapping footprints as SVG elements."""
+    """
+    Renders:
+      1. Two aerial UAV camera sensors at the top (Cam A in Cyan, Cam B in Amber)
+      2. Their 3D projection cones (frustum rays + volume) projecting downward
+      3. The pixelated raster DEM grid on the ground where Footprint A and Footprint B
+         overlap in the center (Emerald Green + Voronoi seamline).
+    """
     elements = []
-    matrix = compute_dem_matrix(grid_size)
+    w = int(grid_size * cell_size)
+    h = int(grid_size * cell_size)
 
-    # Frame footprint HUD indicators
-    w = grid_size * cell_size
-    h = grid_size * cell_size
-
-    # Subtle grid shadow / outer border
+    # Outer dark frame
     elements.append(
-        f'<rect x="{start_x - 3}" y="{start_y - 3}" width="{w + 6}" height="{h + 6}" '
-        f'fill="#050a10" stroke="#162333" stroke-width="1.5" rx="3" />'
+        f'<rect x="{start_x - 4}" y="{start_y - 4}" width="{w + 8}" height="{h + 8}" '
+        f'fill="#050a10" stroke="#1e293b" stroke-width="1.5" rx="6" />'
     )
 
-    # Render each cell
-    for r in range(grid_size):
-        for c in range(grid_size):
-            cx = start_x + c * cell_size
-            cy = start_y + r * cell_size
-            color, opac = get_cell_color(r, c, matrix[r][c], grid_size)
-            # Crisp edges rect with 0.5px gap for discrete raster feel
+    # Raster grid occupies the lower 56% of the emblem (24 cols x 13 rows)
+    rows = 13
+    cols = 24
+    cw = w / cols
+    ch = (h * 0.55) / rows
+    grid_top = start_y + h * 0.43
+
+    # Footprint A: cols 2..14, rows 2..10
+    # Footprint B: cols 9..21, rows 2..10
+    # Overlap A∩B: cols 9..14, rows 2..10
+    fp_a_left = start_x + 2 * cw
+    fp_a_right = start_x + 15 * cw
+    fp_b_left = start_x + 9 * cw
+    fp_b_right = start_x + 22 * cw
+    fp_top = grid_top + 2 * ch
+    fp_bot = grid_top + 11 * ch
+
+    # Camera A and Camera B positions in the upper sky area
+    cam_a_x = start_x + w * 0.30
+    cam_a_y = start_y + h * 0.12
+    cam_b_x = start_x + w * 0.70
+    cam_b_y = start_y + h * 0.12
+
+    # 1. Draw the 24x13 pixelated raster grid on the ground
+    matrix = compute_dem_matrix(grid_size)
+    for r in range(rows):
+        for c in range(cols):
+            cx = start_x + c * cw
+            cy = grid_top + r * ch
+            in_a = (2 <= r <= 10) and (2 <= c <= 14)
+            in_b = (2 <= r <= 10) and (9 <= c <= 21)
+            in_ov = in_a and in_b
+            dem_v = matrix[r][c]
+
+            if in_ov:
+                seam_r = 2.4 + 1.5 * (c - 9)
+                if abs(r - seam_r) < 0.72:
+                    col_hex, op = "#ffffff", 1.0
+                elif r in (2, 10):
+                    col_hex, op = "#00e676", 1.0
+                elif r < seam_r:
+                    col_hex, op = "#00c853", 0.94
+                else:
+                    col_hex, op = "#10b981", 0.94
+            elif in_a:
+                if r in (2, 10) or c == 2:
+                    col_hex, op = "#00e5ff", 1.0
+                else:
+                    col_hex, op = "#064e63" if (r + c) % 2 == 0 else "#08637d", 0.92
+            elif in_b:
+                if r in (2, 10) or c == 21:
+                    col_hex, op = "#ffb300", 1.0
+                else:
+                    col_hex, op = "#6b4704" if (r + c) % 2 == 0 else "#855806", 0.92
+            else:
+                col_hex, op = DEM_PALETTE[dem_v], 0.72
+
             elements.append(
-                f'<rect x="{cx}" y="{cy}" width="{cell_size - 1}" height="{cell_size - 1}" '
-                f'fill="{color}" fill-opacity="{opac:.2f}" shape-rendering="crispEdges"/>'
+                f'<rect x="{cx:.1f}" y="{cy:.1f}" width="{max(1.0, cw - 1.1):.1f}" height="{max(1.0, ch - 1.1):.1f}" '
+                f'fill="{col_hex}" fill-opacity="{op:.2f}" shape-rendering="crispEdges"/>'
             )
 
-    # Tech HUD corner brackets & labels if enabled
+    # 2. Draw 3D Projection Cones (Frustums) from Camera A and Camera B down to Footprints A and B
+    elements.append(
+        f'<polygon points="{cam_a_x:.1f},{cam_a_y:.1f} {fp_a_left:.1f},{fp_top:.1f} {fp_a_right:.1f},{fp_top:.1f}" '
+        f'fill="#00e5ff" fill-opacity="0.18" />'
+    )
+    elements.append(
+        f'<polygon points="{cam_a_x:.1f},{cam_a_y:.1f} {fp_a_left:.1f},{fp_bot:.1f} {fp_a_right:.1f},{fp_bot:.1f}" '
+        f'fill="#00e5ff" fill-opacity="0.10" />'
+    )
+    elements.append(
+        f'<polygon points="{cam_b_x:.1f},{cam_b_y:.1f} {fp_b_left:.1f},{fp_top:.1f} {fp_b_right:.1f},{fp_top:.1f}" '
+        f'fill="#ffb300" fill-opacity="0.18" />'
+    )
+    elements.append(
+        f'<polygon points="{cam_b_x:.1f},{cam_b_y:.1f} {fp_b_left:.1f},{fp_bot:.1f} {fp_b_right:.1f},{fp_bot:.1f}" '
+        f'fill="#ffb300" fill-opacity="0.10" />'
+    )
+    # Central cone intersection highlight (Emerald glow where the two cones cross above the overlap)
+    ov_mid_x = (fp_b_left + fp_a_right) * 0.5
+    cross_y = start_y + h * 0.27
+    elements.append(
+        f'<polygon points="{ov_mid_x:.1f},{cross_y:.1f} {fp_b_left:.1f},{fp_top:.1f} {fp_a_right:.1f},{fp_top:.1f}" '
+        f'fill="#00e676" fill-opacity="0.30" />'
+    )
+
+    # Frustum Edge Rays for Cone A (Cyan) and Cone B (Amber)
+    for tx, ty, op in [(fp_a_left, fp_top, 0.95), (fp_a_right, fp_top, 0.95), (fp_a_left, fp_bot, 0.55), (fp_a_right, fp_bot, 0.80)]:
+        elements.append(
+            f'<line x1="{cam_a_x:.1f}" y1="{cam_a_y:.1f}" x2="{tx:.1f}" y2="{ty:.1f}" '
+            f'stroke="#00e5ff" stroke-width="1.3" stroke-opacity="{op}" stroke-dasharray="3,2"/>'
+        )
+    for tx, ty, op in [(fp_b_left, fp_top, 0.95), (fp_b_right, fp_top, 0.95), (fp_b_left, fp_bot, 0.80), (fp_b_right, fp_bot, 0.55)]:
+        elements.append(
+            f'<line x1="{cam_b_x:.1f}" y1="{cam_b_y:.1f}" x2="{tx:.1f}" y2="{ty:.1f}" '
+            f'stroke="#ffb300" stroke-width="1.3" stroke-opacity="{op}" stroke-dasharray="3,2"/>'
+        )
+
+    # 3. Draw Pixel-Art UAV Camera Nodes at the apex of each projection cone
+    for cx, cy, col in [(cam_a_x, cam_a_y, "#00e5ff"), (cam_b_x, cam_b_y, "#ffb300")]:
+        elements.append(f'<rect x="{cx - 10:.1f}" y="{cy - 4:.1f}" width="20" height="2.5" fill="{col}" shape-rendering="crispEdges"/>')
+        elements.append(f'<rect x="{cx - 12:.1f}" y="{cy - 6:.1f}" width="5" height="2" fill="#e2e8f0" shape-rendering="crispEdges"/>')
+        elements.append(f'<rect x="{cx + 7:.1f}" y="{cy - 6:.1f}" width="5" height="2" fill="#e2e8f0" shape-rendering="crispEdges"/>')
+        elements.append(f'<rect x="{cx - 4:.1f}" y="{cy - 2:.1f}" width="8" height="5.5" fill="#0f172a" stroke="{col}" stroke-width="1.4" shape-rendering="crispEdges"/>')
+        elements.append(f'<rect x="{cx - 1.5:.1f}" y="{cy:.1f}" width="3" height="2.5" fill="#ffffff" shape-rendering="crispEdges"/>')
+
     if show_hud:
-        # Corner brackets
-        b_len = 6
-        b_col = "#2a4365"
-        # Top-left
-        elements.append(f'<path d="M{start_x - 6},{start_y + b_len} L{start_x - 6},{start_y - 6} L{start_x + b_len},{start_y - 6}" stroke="{b_col}" stroke-width="1.5" fill="none"/>')
-        # Top-right
-        elements.append(f'<path d="M{start_x + w - b_len},{start_y - 6} L{start_x + w + 6},{start_y - 6} L{start_x + w + 6},{start_y + b_len}" stroke="{b_col}" stroke-width="1.5" fill="none"/>')
-        # Bottom-left
-        elements.append(f'<path d="M{start_x - 6},{start_y + h - b_len} L{start_x - 6},{start_y + h + 6} L{start_x + b_len},{start_y + h + 6}" stroke="{b_col}" stroke-width="1.5" fill="none"/>')
-        # Bottom-right
-        elements.append(f'<path d="M{start_x + w - b_len},{start_y + h + 6} L{start_x + w + 6},{start_y + h + 6} L{start_x + w + 6},{start_y + h - b_len}" stroke="{b_col}" stroke-width="1.5" fill="none"/>')
-
-        # Footprint labels below emblem
-        label_y = start_y + h + 18
+        label_y = start_y + h + 16
         elements.append(
-            f'<text x="{start_x}" y="{label_y}" fill="#00e5ff" font-family="ui-monospace, monospace" font-size="8.5" font-weight="bold" letter-spacing="0.5">■ FRAME A</text>'
+            f'<text x="{start_x}" y="{label_y}" fill="#00e5ff" font-family="ui-monospace, monospace" font-size="8.5" font-weight="bold">■ CONE A</text>'
         )
         elements.append(
-            f'<text x="{start_x + 60}" y="{label_y}" fill="#00e676" font-family="ui-monospace, monospace" font-size="8.5" font-weight="bold" letter-spacing="0.5">■ OVERLAP</text>'
+            f'<text x="{start_x + 56}" y="{label_y}" fill="#00e676" font-family="ui-monospace, monospace" font-size="8.5" font-weight="bold">■ OVERLAP</text>'
         )
         elements.append(
-            f'<text x="{start_x + 124}" y="{label_y}" fill="#ffb300" font-family="ui-monospace, monospace" font-size="8.5" font-weight="bold" letter-spacing="0.5">■ FRAME B</text>'
+            f'<text x="{start_x + 116}" y="{label_y}" fill="#ffb300" font-family="ui-monospace, monospace" font-size="8.5" font-weight="bold">■ CONE B</text>'
         )
 
-    return "\n    ".join(elements)
+    return chr(10).join(elements)
 
 
 def generate_pixel_text(word, start_x, start_y, pixel_size=7, letter_spacing=2):
