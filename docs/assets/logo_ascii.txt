@@ -6,16 +6,16 @@
 │  ███████╗███████╗██║ ╚████║██║   ██║   ██║  ██║   < 3 min Direct Ortho │
 │  ╚══════╝╚══════╝╚═╝  ╚═══╝╚═╝   ╚═╝   ╚═╝  ╚═╝   Multi-CRS EPSG:9377  │
 ├────────────────────────────────────────────────────────────────────────┤
-│  OVERLAPPING SENSOR FOOTPRINTS & VORONOI SEAMLINE GEOMETRY:            │
+│  3D CAMERA PROJECTION CONES & OVERLAPPING RASTER FOOTPRINTS:           │
 │                                                                        │
-│        ┌────── FRAME A (Cyan) ──────┐                                  │
-│        │  . . . . . . . ┌───────────┴──────────┐                       │
-│        │  . . . . . . . │ ░░░░░░░░░ ╲  ▒▒▒▒▒▒▒ │  FRAME B (Amber)      │
-│        │  . . . . . . . │ ░░░░░░░░░  ╲ ▒▒▒▒▒▒▒ │                       │
-│        └────────────────┤ ░░░░░░░░░   ╲▒▒▒▒▒▒▒ │                       │
-│                         └───────────┬──────────┘                       │
-│                                     ▲ Voronoi Cut Line                 │
-│                                [A∩B] OVERLAP BAND                      │
-│                                                                        │
-│  • Brown-Conrady Dewarping • Rayon Data Parallelism   • LRF Vertical Datum│
+│               [UAV A]                 [UAV B]                          │
+│                 /|\                     /|\                            │
+│               /  |  \     CONES       /  |  \                          │
+│             /    |    \  INTERSECT  /    |    \                        │
+│           /      |      \    ▼    /      |      \                      │
+│        ┌─────────┴───────────┬───────────┴─────────┐                   │
+│        │ ░░░░░░░ │ ▒▒▒▒▒▒▒ ╲ │ ▒▒▒▒▒▒▒ │ ▓▓▓▓▓▓▓▓▓ │  RASTER DEM GRID  │
+│        │ FRAME A │ OVERLAP  ╲│  [A∩B]  │  FRAME B  │  + VORONOI SEAM   │
+│        └─────────┴───────────┴─────────┴───────────┘                   │
+│  • Brown-Conrady Dewarping • Rayon Data Parallelism  • LRF Vertical Datum│
 └────────────────────────────────────────────────────────────────────────┘

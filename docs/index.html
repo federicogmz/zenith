@@ -804,7 +804,27 @@
         <div class="banner-container">
           <button class="banner-toggle-btn" id="banner-toggle">📟 View ASCII Art</button>
           <img src="./assets/logo.svg" alt="Zenith Architecture Banner" id="svg-banner">
-          <pre class="ascii-banner" id="ascii-banner"></pre>
+          <pre class="ascii-banner" id="ascii-banner">┌────────────────────────────────────────────────────────────────────────┐
+│  ███████╗███████╗███╗   ██╗██╗████████╗██╗  ██╗   ZENITH PHOTOGRAMMETRY│
+│  ╚══███╔╝██╔════╝████╗  ██║██║╚══██╔══╝██║  ██║   v1.0.0 (Pure Rust)   │
+│    ███╔╝ █████╗  ██╔██╗ ██║██║   ██║   ███████║   Tactical 2.5D Engine │
+│   ███╔╝  ██╔══╝  ██║╚██╗██║██║   ██║   ██╔══██║   &lt; 2 min Thermal L0   │
+│  ███████╗███████╗██║ ╚████║██║   ██║   ██║  ██║   &lt; 3 min Direct Ortho │
+│  ╚══════╝╚══════╝╚═╝  ╚═══╝╚═╝   ╚═╝   ╚═╝  ╚═╝   Multi-CRS EPSG:9377  │
+├────────────────────────────────────────────────────────────────────────┤
+│  3D CAMERA PROJECTION CONES &amp; OVERLAPPING RASTER FOOTPRINTS:           │
+│                                                                        │
+│               [UAV A]                 [UAV B]                          │
+│                 /|\                     /|\                            │
+│               /  |  \     CONES       /  |  \                          │
+│             /    |    \  INTERSECT  /    |    \                        │
+│           /      |      \    ▼    /      |      \                      │
+│        ┌─────────┴───────────┬───────────┴─────────┐                   │
+│        │ ░░░░░░░ │ ▒▒▒▒▒▒▒ ╲ │ ▒▒▒▒▒▒▒ │ ▓▓▓▓▓▓▓▓▓ │  RASTER DEM GRID  │
+│        │ FRAME A │ OVERLAP  ╲│  [A∩B]  │  FRAME B  │  + VORONOI SEAM   │
+│        └─────────┴───────────┴─────────┴───────────┘                   │
+│  • Brown-Conrady Dewarping • Rayon Data Parallelism  • LRF Vertical Datum│
+└────────────────────────────────────────────────────────────────────────┘</pre>
         </div>
 
         <p class="hero-tagline">
