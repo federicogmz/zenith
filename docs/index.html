@@ -712,15 +712,19 @@
     }
 
     .math-formula {
-      font-family: var(--font-mono);
       background-color: var(--code-bg);
-      padding: 12px 16px;
+      padding: 16px 20px;
       border-radius: 6px;
       border: 1px solid var(--border-color);
       overflow-x: auto;
       margin: 8px 0;
-      font-size: 0.88rem;
-      color: #38bdf8;
+      font-size: 1.04rem;
+      line-height: 1.8;
+      color: var(--text-primary);
+    }
+
+    .math-formula math[display="block"] {
+      margin: 6px 0;
     }
 
     /* Footer */
@@ -1563,31 +1567,60 @@ zenith benchmark --frames 100 --dem-size 1000 --gsd 0.15</code></pre>
         <div class="math-card">
           <div class="math-title">Conformal Series Expansions</div>
           <div class="math-formula">
-X = X_0 + k_0 N [ A + (1 - T + C)(A^3 / 6) + (5 - 18T + T^2 + 72C - 58e'^2)(A^5 / 120) ]
-Y = Y_0 + k_0 [ M + N tan &phi; ( A^2 / 2 + (5 - T + 9C + 4C^2)(A^4 / 24) + (61 - 58T + T^2 + 600C - 330e'^2)(A^6 / 720) ) ]
+            <math display="block">
+              <mi>X</mi><mo>=</mo><msub><mi>X</mi><mn>0</mn></msub><mo>+</mo><msub><mi>k</mi><mn>0</mn></msub><mi>N</mi>
+              <mrow><mo>[</mo>
+                <mi>A</mi><mo>+</mo><mrow><mo>(</mo><mn>1</mn><mo>&minus;</mo><mi>T</mi><mo>+</mo><mi>C</mi><mo>)</mo></mrow><mfrac><msup><mi>A</mi><mn>3</mn></msup><mn>6</mn></mfrac>
+                <mo>+</mo><mrow><mo>(</mo><mn>5</mn><mo>&minus;</mo><mn>18</mn><mi>T</mi><mo>+</mo><msup><mi>T</mi><mn>2</mn></msup><mo>+</mo><mn>72</mn><mi>C</mi><mo>&minus;</mo><mn>58</mn><msup><mrow><mi>e</mi><mo>&prime;</mo></mrow><mn>2</mn></msup><mo>)</mo></mrow><mfrac><msup><mi>A</mi><mn>5</mn></msup><mn>120</mn></mfrac>
+              <mo>]</mo></mrow>
+            </math>
+            <math display="block">
+              <mi>Y</mi><mo>=</mo><msub><mi>Y</mi><mn>0</mn></msub><mo>+</mo><msub><mi>k</mi><mn>0</mn></msub>
+              <mrow><mo>[</mo>
+                <mi>M</mi><mo>+</mo><mi>N</mi><mi>tan</mi><mi>&phi;</mi>
+                <mrow><mo>(</mo>
+                  <mfrac><msup><mi>A</mi><mn>2</mn></msup><mn>2</mn></mfrac>
+                  <mo>+</mo><mrow><mo>(</mo><mn>5</mn><mo>&minus;</mo><mi>T</mi><mo>+</mo><mn>9</mn><mi>C</mi><mo>+</mo><mn>4</mn><msup><mi>C</mi><mn>2</mn></msup><mo>)</mo></mrow><mfrac><msup><mi>A</mi><mn>4</mn></msup><mn>24</mn></mfrac>
+                  <mo>+</mo><mrow><mo>(</mo><mn>61</mn><mo>&minus;</mo><mn>58</mn><mi>T</mi><mo>+</mo><msup><mi>T</mi><mn>2</mn></msup><mo>+</mo><mn>600</mn><mi>C</mi><mo>&minus;</mo><mn>330</mn><msup><mrow><mi>e</mi><mo>&prime;</mo></mrow><mn>2</mn></msup><mo>)</mo></mrow><mfrac><msup><mi>A</mi><mn>6</mn></msup><mn>720</mn></mfrac>
+                <mo>)</mo></mrow>
+              <mo>]</mo></mrow>
+            </math>
           </div>
           <p style="font-size: 0.84rem; color: var(--text-muted); margin-top: 6px;">
-            Supports Colombian Origen Nacional (<code>EPSG:9377</code>: Lat 4&deg;N, Lon 73&deg;W, $k_0 = 0.9992$, $X_0 = 5\,000\,000\text{ m}$, $Y_0 = 2\,000\,000\text{ m}$), global UTM Zones 1N&ndash;60N / 1S&ndash;60S (<code>EPSG:32601..32760</code>), European UTM 28N&ndash;38N (<code>EPSG:25828..25838</code>), and automated zone derivation (<code>--crs auto</code>).
+            Supports Colombian Origen Nacional (<code>EPSG:9377</code>: Lat 4&deg;N, Lon 73&deg;W, <math><msub><mi>k</mi><mn>0</mn></msub><mo>=</mo><mn>0.9992</mn></math>, <math><msub><mi>X</mi><mn>0</mn></msub><mo>=</mo><mn>5,000,000</mn><mtext>&nbsp;m</mtext></math>, <math><msub><mi>Y</mi><mn>0</mn></msub><mo>=</mo><mn>2,000,000</mn><mtext>&nbsp;m</mtext></math>), global UTM Zones 1N&ndash;60N / 1S&ndash;60S (<code>EPSG:32601..32760</code>), European UTM 28N&ndash;38N (<code>EPSG:25828..25838</code>), and automated zone derivation (<code>--crs auto</code>).
           </p>
         </div>
 
         <!-- 5.2 Optics -->
         <h3 style="margin: 28px 0 8px 0; color: var(--accent-cyan);">5.2 Gimbal-Lock-Free Optical Heading &amp; Brown-Conrady Dewarping</h3>
         <p>
-          Camera orientations are computed directly in local East-North-Up (ENU) coordinates from DJI gimbal angles $(\psi_{\text{yaw}}, \theta_{\text{pitch}}, \phi_{\text{roll}})$. The forward optical vector $\vec{z}_c$ and orthogonal image axes $(\vec{x}'_c, \vec{u}'_{\text{top}})$ eliminate gimbal lock singularities:
+          Camera orientations are computed directly in local East-North-Up (ENU) coordinates from DJI gimbal angles <math><mrow><mo>(</mo><msub><mi>&psi;</mi><mtext>yaw</mtext></msub><mo>,</mo><msub><mi>&theta;</mi><mtext>pitch</mtext></msub><mo>,</mo><msub><mi>&phi;</mi><mtext>roll</mtext></msub><mo>)</mo></mrow></math>. The forward optical vector <math><msub><mover><mi>z</mi><mo>&rarr;</mo></mover><mi>c</mi></msub></math> and orthogonal image axes <math><mrow><mo>(</mo><msubsup><mover><mi>x</mi><mo>&rarr;</mo></mover><mi>c</mi><mo>&prime;</mo></msubsup><mo>,</mo><msubsup><mover><mi>u</mi><mo>&rarr;</mo></mover><mtext>top</mtext><mo>&prime;</mo></msubsup><mo>)</mo></mrow></math> eliminate gimbal lock singularities:
         </p>
         <div class="math-card">
           <div class="math-title">Orthonormal Camera Basis in ENU</div>
           <div class="math-formula">
-&vec;z_c = [ cos &theta; sin &psi;,  cos &theta; cos &psi;,  sin &theta; ]
-&vec;x_c = [ cos &psi;,  -sin &psi;,  0 ]
-&vec;u_top = [ -sin &theta; sin &psi;,  -sin &theta; cos &psi;,  cos &theta; ]
-&vec;x'_c = normalize(&vec;x_c cos &phi; + &vec;u_top sin &phi;)
-&vec;u'_top = normalize(-&vec;x_c sin &phi; + &vec;u_top cos &phi;)
+            <math display="block">
+              <msub><mover><mi>z</mi><mo>&rarr;</mo></mover><mi>c</mi></msub><mo>=</mo>
+              <mrow><mo>[</mo><mi>cos</mi><mi>&theta;</mi><mspace width="0.2em"/><mi>sin</mi><mi>&psi;</mi><mo>,</mo><mspace width="0.5em"/><mi>cos</mi><mi>&theta;</mi><mspace width="0.2em"/><mi>cos</mi><mi>&psi;</mi><mo>,</mo><mspace width="0.5em"/><mi>sin</mi><mi>&theta;</mi><mo>]</mo></mrow>
+            </math>
+            <math display="block">
+              <msub><mover><mi>x</mi><mo>&rarr;</mo></mover><mi>c</mi></msub><mo>=</mo>
+              <mrow><mo>[</mo><mi>cos</mi><mi>&psi;</mi><mo>,</mo><mspace width="0.5em"/><mo>&minus;</mo><mi>sin</mi><mi>&psi;</mi><mo>,</mo><mspace width="0.5em"/><mn>0</mn><mo>]</mo></mrow>
+              <mspace width="1.2em"/><mtext>and</mtext><mspace width="1.2em"/>
+              <msub><mover><mi>u</mi><mo>&rarr;</mo></mover><mtext>top</mtext></msub><mo>=</mo>
+              <mrow><mo>[</mo><mo>&minus;</mo><mi>sin</mi><mi>&theta;</mi><mspace width="0.2em"/><mi>sin</mi><mi>&psi;</mi><mo>,</mo><mspace width="0.5em"/><mo>&minus;</mo><mi>sin</mi><mi>&theta;</mi><mspace width="0.2em"/><mi>cos</mi><mi>&psi;</mi><mo>,</mo><mspace width="0.5em"/><mi>cos</mi><mi>&theta;</mi><mo>]</mo></mrow>
+            </math>
+            <math display="block">
+              <msubsup><mover><mi>x</mi><mo>&rarr;</mo></mover><mi>c</mi><mo>&prime;</mo></msubsup><mo>=</mo>
+              <mtext>normalize</mtext><mrow><mo>(</mo><msub><mover><mi>x</mi><mo>&rarr;</mo></mover><mi>c</mi></msub><mi>cos</mi><mi>&phi;</mi><mo>+</mo><msub><mover><mi>u</mi><mo>&rarr;</mo></mover><mtext>top</mtext></msub><mi>sin</mi><mi>&phi;</mi><mo>)</mo></mrow>
+              <mo>,</mo><mspace width="1.2em"/>
+              <msubsup><mover><mi>u</mi><mo>&rarr;</mo></mover><mtext>top</mtext><mo>&prime;</mo></msubsup><mo>=</mo>
+              <mtext>normalize</mtext><mrow><mo>(</mo><mo>&minus;</mo><msub><mover><mi>x</mi><mo>&rarr;</mo></mover><mi>c</mi></msub><mi>sin</mi><mi>&phi;</mi><mo>+</mo><msub><mover><mi>u</mi><mo>&rarr;</mo></mover><mtext>top</mtext></msub><mi>cos</mi><mi>&phi;</mi><mo>)</mo></mrow>
+            </math>
           </div>
         </div>
         <p>
-          Sensor lens distortions are modeled via the Brown-Conrady formulation extracted dynamically from DJI XMP <code>DewarpData</code> ($f_x, f_y, c_x, c_y, k_1, k_2, p_1, p_2, k_3$). During back-projection, undistorted coordinates $(x_n, y_n)$ are reconstructed via Newton-Raphson fixed-point iteration until $\| (x_n^{(k+1)}, y_n^{(k+1)}) - (x_n^{(k)}, y_n^{(k)}) \| &lt; 10^{-10}$.
+          Sensor lens distortions are modeled via the Brown-Conrady formulation extracted dynamically from DJI XMP <code>DewarpData</code> (<math><mrow><msub><mi>f</mi><mi>x</mi></msub><mo>,</mo><msub><mi>f</mi><mi>y</mi></msub><mo>,</mo><msub><mi>c</mi><mi>x</mi></msub><mo>,</mo><msub><mi>c</mi><mi>y</mi></msub><mo>,</mo><msub><mi>k</mi><mn>1</mn></msub><mo>,</mo><msub><mi>k</mi><mn>2</mn></msub><mo>,</mo><msub><mi>p</mi><mn>1</mn></msub><mo>,</mo><msub><mi>p</mi><mn>2</mn></msub><mo>,</mo><msub><mi>k</mi><mn>3</mn></msub></mrow></math>). During back-projection, undistorted coordinates <math><mrow><mo>(</mo><msub><mi>x</mi><mi>n</mi></msub><mo>,</mo><msub><mi>y</mi><mi>n</mi></msub><mo>)</mo></mrow></math> are reconstructed via Newton-Raphson fixed-point iteration until <math><mrow><mo>&Vert;</mo><mrow><mo>(</mo><msubsup><mi>x</mi><mi>n</mi><mrow><mo>(</mo><mi>k</mi><mo>+</mo><mn>1</mn><mo>)</mo></mrow></msubsup><mo>,</mo><msubsup><mi>y</mi><mi>n</mi><mrow><mo>(</mo><mi>k</mi><mo>+</mo><mn>1</mn><mo>)</mo></mrow></msubsup><mo>)</mo></mrow><mo>&minus;</mo><mrow><mo>(</mo><msubsup><mi>x</mi><mi>n</mi><mrow><mo>(</mo><mi>k</mi><mo>)</mo></mrow></msubsup><mo>,</mo><msubsup><mi>y</mi><mi>n</mi><mrow><mo>(</mo><mi>k</mi><mo>)</mo></mrow></msubsup><mo>)</mo></mrow><mo>&Vert;</mo><mo>&lt;</mo><msup><mn>10</mn><mrow><mo>&minus;</mo><mn>10</mn></mrow></msup></mrow></math>.
         </p>
 
         <!-- 5.3 DEM -->
@@ -1603,11 +1636,19 @@ Y = Y_0 + k_0 [ M + N tan &phi; ( A^2 / 2 + (5 - T + 9C + 4C^2)(A^4 / 24) + (61 
         <div class="math-card">
           <div class="math-title">Laser Rangefinder (LRF) Datum Calibration</div>
           <div class="math-formula">
-H_i = h_{\text{GNSS}, i} - N - \text{LRF}_i \cdot \cos(\alpha_{\text{nadir}, i})
-N_{\text{calib}} = \text{median} \{ h_{\text{GNSS}, i} - (\text{DEM}(X_i, Y_i) + \text{LRF}_i \cdot \cos(\alpha_i)) \}
+            <math display="block">
+              <msub><mi>H</mi><mi>i</mi></msub><mo>=</mo><msub><mi>h</mi><mrow><mtext>GNSS</mtext><mo>,</mo><mi>i</mi></mrow></msub><mo>&minus;</mo><mi>N</mi><mo>&minus;</mo><msub><mtext>LRF</mtext><mi>i</mi></msub><mo>&sdot;</mo><mi>cos</mi><mrow><mo>(</mo><msub><mi>&alpha;</mi><mrow><mtext>nadir</mtext><mo>,</mo><mi>i</mi></mrow></msub><mo>)</mo></mrow>
+            </math>
+            <math display="block">
+              <msub><mi>N</mi><mtext>calib</mtext></msub><mo>=</mo><mtext>median</mtext>
+              <mrow><mo>{</mo>
+                <msub><mi>h</mi><mrow><mtext>GNSS</mtext><mo>,</mo><mi>i</mi></mrow></msub><mo>&minus;</mo>
+                <mrow><mo>(</mo><mtext>DEM</mtext><mrow><mo>(</mo><msub><mi>X</mi><mi>i</mi></msub><mo>,</mo><msub><mi>Y</mi><mi>i</mi></msub><mo>)</mo></mrow><mo>+</mo><msub><mtext>LRF</mtext><mi>i</mi></msub><mo>&sdot;</mo><mi>cos</mi><mrow><mo>(</mo><msub><mi>&alpha;</mi><mi>i</mi></msub><mo>)</mo></mrow><mo>)</mo></mrow>
+              <mo>}</mo></mrow>
+            </math>
           </div>
           <p style="font-size: 0.84rem; color: var(--text-muted); margin-top: 6px;">
-            Cross-validates onboard Laser Rangefinder measurements against terrain elevations to calibrate out geoidal undulation offsets ($H = h - N$).
+            Cross-validates onboard Laser Rangefinder measurements against terrain elevations to calibrate out geoidal undulation offsets (<math><mrow><mi>H</mi><mo>=</mo><mi>h</mi><mo>&minus;</mo><mi>N</mi></mrow></math>).
           </p>
         </div>
 
@@ -1619,11 +1660,23 @@ N_{\text{calib}} = \text{median} \{ h_{\text{GNSS}, i} - (\text{DEM}(X_i, Y_i) +
         <div class="math-card">
           <div class="math-title">Top-3 Softmin Distance Weights</div>
           <div class="math-formula">
-w_k = \frac{\exp(-d_{\text{sensor}, k} / \sigma)}{\sum_{j=1}^3 \exp(-d_{\text{sensor}, j} / \sigma)}, \quad \sigma = \text{feather\_px}
-I_{\text{ortho}}(X, Y) = \sum_{k=1}^3 w_k \cdot [ g_k \cdot I_k(u_k, v_k) ]
+            <math display="block">
+              <msub><mi>w</mi><mi>k</mi></msub><mo>=</mo>
+              <mfrac>
+                <mrow><mi>exp</mi><mrow><mo>(</mo><mo>&minus;</mo><msub><mi>d</mi><mrow><mtext>sensor</mtext><mo>,</mo><mi>k</mi></mrow></msub><mo>/</mo><mi>&sigma;</mi><mo>)</mo></mrow></mrow>
+                <mrow><munderover><mo>&sum;</mo><mrow><mi>j</mi><mo>=</mo><mn>1</mn></mrow><mn>3</mn></munderover><mi>exp</mi><mrow><mo>(</mo><mo>&minus;</mo><msub><mi>d</mi><mrow><mtext>sensor</mtext><mo>,</mo><mi>j</mi></mrow></msub><mo>/</mo><mi>&sigma;</mi><mo>)</mo></mrow></mrow>
+              </mfrac>
+              <mo>,</mo><mspace width="1.5em"/><mi>&sigma;</mi><mo>=</mo><mtext>feather_px</mtext>
+            </math>
+            <math display="block">
+              <msub><mi>I</mi><mtext>ortho</mtext></msub><mrow><mo>(</mo><mi>X</mi><mo>,</mo><mi>Y</mi><mo>)</mo></mrow><mo>=</mo>
+              <munderover><mo>&sum;</mo><mrow><mi>k</mi><mo>=</mo><mn>1</mn></mrow><mn>3</mn></munderover>
+              <msub><mi>w</mi><mi>k</mi></msub><mo>&sdot;</mo>
+              <mrow><mo>[</mo><msub><mi>g</mi><mi>k</mi></msub><mo>&sdot;</mo><msub><mi>I</mi><mi>k</mi></msub><mrow><mo>(</mo><msub><mi>u</mi><mi>k</mi></msub><mo>,</mo><msub><mi>v</mi><mi>k</mi></msub><mo>)</mo></mrow><mo>]</mo></mrow>
+            </math>
           </div>
           <p style="font-size: 0.84rem; color: var(--text-muted); margin-top: 6px;">
-            Here $g_k$ is the Brown-Lowe global exposure gain factor computed across adjacent frame overlapping regions, preventing luminance stepping across camera shots.
+            Here <math><msub><mi>g</mi><mi>k</mi></msub></math> is the Brown-Lowe global exposure gain factor computed across adjacent frame overlapping regions, preventing luminance stepping across camera shots.
           </p>
         </div>
 
@@ -1635,7 +1688,13 @@ I_{\text{ortho}}(X, Y) = \sum_{k=1}^3 w_k \cdot [ g_k \cdot I_k(u_k, v_k) ]
             Standard photogrammetric blending averages pixel values across frames. In wildfire operations, averaging a 650&deg;C flame pixel with a 30&deg;C unburned background pixel dilutes the fire front to a false 340&deg;C.
           </p>
           <div class="math-formula">
-\text{If } |T_A(u, v) - T_B(u, v)| &gt; \Delta T_{\text{max}} \ (3.5^\circ\text{C}) \implies \text{Preserve max nadir frame without blending}
+            <math display="block">
+              <mtext>If&nbsp;</mtext>
+              <mrow><mo>|</mo><msub><mi>T</mi><mi>A</mi></msub><mrow><mo>(</mo><mi>u</mi><mo>,</mo><mi>v</mi><mo>)</mo></mrow><mo>&minus;</mo><msub><mi>T</mi><mi>B</mi></msub><mrow><mo>(</mo><mi>u</mi><mo>,</mo><mi>v</mi><mo>)</mo></mrow><mo>|</mo></mrow>
+              <mo>&gt;</mo><mi>&Delta;</mi><msub><mi>T</mi><mtext>max</mtext></msub><mspace width="0.4em"/><mrow><mo>(</mo><mn>3.5</mn><msup><mi/><mo>&circ;</mo></msup><mtext>C</mtext><mo>)</mo></mrow>
+              <mspace width="0.6em"/><mo>&rArr;</mo><mspace width="0.6em"/>
+              <mtext>Preserve max nadir frame without blending</mtext>
+            </math>
           </div>
           <p style="font-size: 0.84rem; color: var(--text-muted); margin-top: 6px;">
             Nearest-Neighbor sampling is enforced across thermal arrays. Blending is strictly restricted to narrow Voronoi borders (<code>--feather-px 6.0</code>) and automatically bypassed whenever temperature disparity exceeds <code>--max-blend-temp-diff</code> (3.5&deg;C).
