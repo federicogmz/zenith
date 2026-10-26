@@ -491,6 +491,15 @@
       color: var(--accent-cyan);
     }
 
+    pre code {
+      background: transparent;
+      border: none;
+      padding: 0;
+      border-radius: 0;
+      color: inherit;
+      font-size: inherit;
+    }
+
     /* Tabs Component */
     .tab-container {
       margin: 20px 0;
@@ -1018,19 +1027,19 @@
 
         <div class="tab-container">
           <div class="tab-header">
-            <button class="tab-btn active" data-tab="tab-install-binary">Static Musl Binary</button>
+            <button class="tab-btn active" data-tab="tab-install-binary">Standalone Linux x86_64 Binary</button>
             <button class="tab-btn" data-tab="tab-install-source">Build from Source</button>
           </div>
 
           <div class="tab-pane active" id="tab-install-binary">
-            <p>Download the latest release binary for <code>x86_64-unknown-linux-musl</code>:</p>
+            <p>Download the pre-compiled standalone binary for <code>Linux x86_64</code> (zero external runtime dependencies):</p>
             <div class="code-wrapper">
               <div class="code-header">
                 <span>Bash &bull; Release Download</span>
                 <button class="copy-btn">Copy</button>
               </div>
-              <pre class="code-content"><code># Download the static musl binary from GitHub Releases
-curl -sSL -o zenith https://github.com/federicogmz/zenith/releases/latest/download/zenith-x86_64-unknown-linux-musl
+              <pre class="code-content"><code># Download the standalone Linux x86_64 binary from GitHub Releases
+curl -sSL -o zenith https://github.com/federicogmz/zenith/releases/download/v1.0.0/zenith-v1.0.0-linux-x86_64
 chmod +x zenith
 sudo mv zenith /usr/local/bin/
 
