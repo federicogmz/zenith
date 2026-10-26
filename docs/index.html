@@ -1409,17 +1409,17 @@ zenith benchmark --frames 100 --dem-size 1000 --gsd 0.15</code></pre>
                 <tr data-keywords="dem elevation dtm terrain">
                   <td><code>--dem &lt;DEM&gt;</code></td>
                   <td>PathBuf &bull; Optional</td>
-                  <td>Ruta al archivo DEM (GeoTIFF .tif, VRT o ENVI).</td>
+                  <td>Path to the DEM raster file (GeoTIFF <code>.tif</code>, VRT, or ENVI).</td>
                 </tr>
                 <tr data-keywords="datum-offset geoid lrf vertical">
                   <td><code>--datum-offset &lt;OFFSET&gt;</code></td>
                   <td>f64 &bull; 0.0</td>
-                  <td>Desplazamiento geoidal N en metros para calibración ortométrica.</td>
+                  <td>Geoidal undulation offset <em>N</em> in meters for orthometric vertical calibration.</td>
                 </tr>
                 <tr data-keywords="max-pitch nadir angle filter">
                   <td><code>--max-pitch &lt;PITCH&gt;</code></td>
                   <td>f64 &bull; -70.0</td>
-                  <td>Ángulo de pitch máximo permitido para mapeo nadir (grados).</td>
+                  <td>Maximum allowable camera pitch angle for nadir mapping (degrees).</td>
                 </tr>
               </tbody>
             </table>
@@ -1448,32 +1448,32 @@ zenith benchmark --frames 100 --dem-size 1000 --gsd 0.15</code></pre>
                 <tr data-keywords="geo camera coordinates poses geo.txt">
                   <td><code>-g, --geo &lt;GEO&gt;</code></td>
                   <td>PathBuf &bull; Required</td>
-                  <td>Ruta al archivo <code>geo.txt</code> con coordenadas y orientaciones de cámara.</td>
+                  <td>Path to the <code>geo.txt</code> file containing camera coordinates and orientations.</td>
                 </tr>
                 <tr data-keywords="output bin tif orthomosaic">
                   <td><code>-o, --output &lt;OUTPUT&gt;</code></td>
                   <td>PathBuf &bull; orthomosaic.bin</td>
-                  <td>Ruta del producto de salida (.tif o .bin).</td>
+                  <td>Output product file path (<code>.tif</code> or <code>.bin</code>).</td>
                 </tr>
                 <tr data-keywords="gsd target resolution">
                   <td><code>--gsd &lt;GSD&gt;</code></td>
                   <td>f64 &bull; 0.1</td>
-                  <td>GSD objetivo en metros por píxel (por defecto 0.1m = 10cm).</td>
+                  <td>Target ground sampling distance in meters per pixel (default: 0.1 m = 10 cm).</td>
                 </tr>
                 <tr data-keywords="datum-offset aburra geoid -24">
                   <td><code>--datum-offset &lt;OFFSET&gt;</code></td>
                   <td>f64 &bull; -24.0</td>
-                  <td>Offset geoidal N en metros (H = h - N, por defecto -24.0m para Valle de Aburrá).</td>
+                  <td>Geoidal offset <em>N</em> in meters (<em>H = h &minus; N</em>, default: &minus;24.0 m for the Aburr&aacute; Valley).</td>
                 </tr>
                 <tr data-keywords="plane-alt contingency elevation">
                   <td><code>--plane-alt &lt;ALT&gt;</code></td>
                   <td>f64 &bull; 1500.0</td>
-                  <td>Altitud plana de contingencia en metros si no se especifica DEM.</td>
+                  <td>Contingency flat-plane elevation in meters when no external DEM is specified.</td>
                 </tr>
                 <tr data-keywords="resampling nearest bilinear">
                   <td><code>--resampling &lt;METHOD&gt;</code></td>
                   <td>String &bull; nearest</td>
-                  <td>Método de remuestreo: 'nearest' (térmico/radiométrico) o 'bilinear' (RGB).</td>
+                  <td>Resampling kernel: <code>nearest</code> (radiometric thermal) or <code>bilinear</code> (visual RGB).</td>
                 </tr>
               </tbody>
             </table>
@@ -1502,17 +1502,17 @@ zenith benchmark --frames 100 --dem-size 1000 --gsd 0.15</code></pre>
                 <tr data-keywords="frames count simulation">
                   <td><code>-f, --frames &lt;FRAMES&gt;</code></td>
                   <td>usize &bull; 50</td>
-                  <td>Número de fotogramas sintéticos a simular.</td>
+                  <td>Number of synthetic camera frames to simulate.</td>
                 </tr>
                 <tr data-keywords="dem-size grid dimensions cells">
                   <td><code>-d, --dem-size &lt;SIZE&gt;</code></td>
                   <td>usize &bull; 1000</td>
-                  <td>Dimensiones del DEM sintético en celdas (N x N).</td>
+                  <td>Dimensions of the synthetic DEM grid in cells (<em>N &times; N</em>).</td>
                 </tr>
                 <tr data-keywords="gsd benchmark resolution">
                   <td><code>-g, --gsd &lt;GSD&gt;</code></td>
                   <td>f64 &bull; 0.2</td>
-                  <td>GSD objetivo en metros.</td>
+                  <td>Target ground sampling distance in meters.</td>
                 </tr>
               </tbody>
             </table>
@@ -1541,7 +1541,7 @@ zenith benchmark --frames 100 --dem-size 1000 --gsd 0.15</code></pre>
                 <tr data-keywords="manifest json contract path validate">
                   <td><code>-m, --manifest &lt;MANIFEST&gt;</code></td>
                   <td>PathBuf &bull; Required</td>
-                  <td>Ruta al archivo <code>manifest.json</code> a auditar.</td>
+                  <td>Path to the <code>manifest.json</code> file to validate against the contract schema.</td>
                 </tr>
               </tbody>
             </table>
