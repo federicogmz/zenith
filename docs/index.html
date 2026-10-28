@@ -1,0 +1,1965 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zenith // Ultra-Fast 2.5D Photogrammetry &amp; Radiometric Engine</title>
+  <meta name="description" content="Zenith: Independent 2.5D direct ray-casting photogrammetry and radiometric orthomosaic engine in pure Rust for tactical UAV operations and wildfire response.">
+  <link rel="icon" type="image/svg+xml" href="./assets/icon.svg">
+  <style>
+    :root {
+      --bg-primary: #070c12;
+      --bg-secondary: #0b121a;
+      --bg-card: #0f1924;
+      --bg-card-hover: #142232;
+      --bg-card-header: #121f2d;
+      --border-color: #1e2e42;
+      --border-focus: #00e5ff;
+      --text-primary: #e6edf3;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --accent-cyan: #00e5ff;
+      --accent-emerald: #00e676;
+      --accent-amber: #ffb300;
+      --accent-purple: #a855f7;
+      --code-bg: #050a0f;
+      --badge-bg: #112233;
+      --badge-text: #38bdf8;
+      --sidebar-width: 280px;
+      --header-height: 60px;
+      --shadow-sm: 0 2px 4px rgba(0,0,0,0.4);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.5);
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    }
+
+    body.light-theme {
+      --bg-primary: #f8fafc;
+      --bg-secondary: #f1f5f9;
+      --bg-card: #ffffff;
+      --bg-card-hover: #f8fafc;
+      --bg-card-header: #f1f5f9;
+      --border-color: #cbd5e1;
+      --border-focus: #0284c7;
+      --text-primary: #0f172a;
+      --text-secondary: #475569;
+      --text-muted: #64748b;
+      --accent-cyan: #0284c7;
+      --accent-emerald: #10b981;
+      --accent-amber: #d97706;
+      --accent-purple: #7c3aed;
+      --code-bg: #1e293b;
+      --badge-bg: #e0f2fe;
+      --badge-text: #0369a1;
+      --shadow-sm: 0 2px 4px rgba(0,0,0,0.06);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      font-size: 15px;
+    }
+
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      line-height: 1.6;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      transition: background-color 0.2s ease, color 0.2s ease;
+    }
+
+    /* Top Navigation Bar */
+    header.top-nav {
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      height: var(--header-height);
+      background-color: rgba(11, 18, 26, 0.92);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+    }
+
+    body.light-theme header.top-nav {
+      background-color: rgba(255, 255, 255, 0.92);
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .brand-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+    }
+
+    .brand-title {
+      font-family: var(--font-mono);
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      color: var(--text-primary);
+    }
+
+    .brand-badge {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      background-color: var(--badge-bg);
+      color: var(--badge-text);
+      padding: 2px 8px;
+      border-radius: 9999px;
+      font-weight: 600;
+      border: 1px solid var(--border-color);
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .nav-btn {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+      text-decoration: none;
+    }
+
+    .nav-btn:hover {
+      border-color: var(--accent-cyan);
+      color: var(--accent-cyan);
+    }
+
+    /* Layout: Sidebar + Main Content */
+    .app-container {
+      display: flex;
+      flex: 1;
+      width: 100%;
+      max-width: 1440px;
+      margin: 0 auto;
+    }
+
+    aside.sidebar {
+      width: var(--sidebar-width);
+      position: sticky;
+      top: var(--header-height);
+      height: calc(100vh - var(--header-height));
+      overflow-y: auto;
+      padding: 20px 16px;
+      border-right: 1px solid var(--border-color);
+      background-color: var(--bg-secondary);
+      flex-shrink: 0;
+    }
+
+    .sidebar-search {
+      margin-bottom: 20px;
+      position: relative;
+    }
+
+    .sidebar-search input {
+      width: 100%;
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 8px 12px 8px 32px;
+      font-size: 0.85rem;
+      color: var(--text-primary);
+      outline: none;
+      transition: border-color 0.15s ease;
+    }
+
+    .sidebar-search input:focus {
+      border-color: var(--accent-cyan);
+    }
+
+    .sidebar-search svg {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 14px;
+      height: 14px;
+      fill: var(--text-muted);
+    }
+
+    .nav-list {
+      list-style: none;
+    }
+
+    .nav-item {
+      margin-bottom: 4px;
+    }
+
+    .nav-link {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 7px 12px;
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 0.88rem;
+      border-radius: 6px;
+      transition: all 0.15s ease;
+    }
+
+    .nav-link:hover, .nav-link.active {
+      color: var(--accent-cyan);
+      background-color: var(--bg-card);
+    }
+
+    .nav-link.active {
+      font-weight: 600;
+      border-left: 3px solid var(--accent-cyan);
+      border-top-left-radius: 0;
+      border-bottom-left-radius: 0;
+    }
+
+    .nav-section-title {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      font-weight: 700;
+      margin: 18px 0 6px 12px;
+    }
+
+    main.content {
+      flex: 1;
+      padding: 32px 48px 80px 48px;
+      min-width: 0;
+    }
+
+    /* Hero Section */
+    .hero {
+      margin-bottom: 48px;
+      text-align: center;
+    }
+
+    .banner-container {
+      position: relative;
+      margin-bottom: 24px;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid var(--border-color);
+      box-shadow: var(--shadow-md);
+      background-color: #0b1017;
+    }
+
+    .banner-container img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .ascii-banner {
+      display: none;
+      padding: 24px;
+      background-color: #0b1017;
+      color: #00e5ff;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      line-height: 1.25;
+      white-space: pre;
+      overflow-x: auto;
+      text-align: left;
+    }
+
+    .banner-toggle-btn {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background-color: rgba(15, 25, 36, 0.85);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      padding: 5px 10px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      cursor: pointer;
+      backdrop-filter: blur(4px);
+    }
+
+    .banner-toggle-btn:hover {
+      border-color: var(--accent-cyan);
+      color: var(--accent-cyan);
+    }
+
+    .hero-tagline {
+      font-size: 1.25rem;
+      color: var(--text-secondary);
+      max-width: 820px;
+      margin: 0 auto 24px auto;
+    }
+
+    .hero-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .stat-card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 16px;
+      text-align: center;
+    }
+
+    .stat-val {
+      font-family: var(--font-mono);
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: var(--accent-cyan);
+      margin-bottom: 4px;
+    }
+
+    .stat-val.emerald { color: var(--accent-emerald); }
+    .stat-val.amber { color: var(--accent-amber); }
+    .stat-val.purple { color: var(--accent-purple); }
+
+    .stat-label {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Section Styles */
+    section.doc-section {
+      margin-bottom: 56px;
+      scroll-margin-top: calc(var(--header-height) + 24px);
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .section-title {
+      font-size: 1.65rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+
+    .section-badge {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      padding: 3px 8px;
+      background-color: var(--badge-bg);
+      color: var(--accent-cyan);
+      border-radius: 4px;
+      border: 1px solid var(--border-color);
+    }
+
+    p.lead {
+      font-size: 1.05rem;
+      color: var(--text-secondary);
+      margin-bottom: 20px;
+    }
+
+    /* Tables */
+    .table-container {
+      overflow-x: auto;
+      margin: 20px 0;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      background-color: var(--bg-card);
+    }
+
+    table.doc-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.88rem;
+    }
+
+    table.doc-table th {
+      background-color: var(--bg-card-header);
+      padding: 12px 16px;
+      font-weight: 600;
+      color: var(--text-primary);
+      border-bottom: 1px solid var(--border-color);
+      white-space: nowrap;
+    }
+
+    table.doc-table td {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-color);
+      color: var(--text-secondary);
+    }
+
+    table.doc-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    table.doc-table tr:hover td {
+      background-color: var(--bg-card-hover);
+    }
+
+    /* Code Blocks with Copy */
+    .code-wrapper {
+      position: relative;
+      margin: 16px 0 24px 0;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--border-color);
+      background-color: var(--code-bg);
+    }
+
+    .code-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 16px;
+      background-color: var(--bg-card-header);
+      border-bottom: 1px solid var(--border-color);
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    .copy-btn {
+      background: transparent;
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      border-radius: 4px;
+      padding: 3px 8px;
+      font-size: 0.72rem;
+      font-family: var(--font-mono);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.15s ease;
+    }
+
+    .copy-btn:hover {
+      border-color: var(--accent-cyan);
+      color: var(--accent-cyan);
+    }
+
+    pre.code-content {
+      padding: 16px;
+      overflow-x: auto;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      line-height: 1.5;
+      color: #cbd5e1;
+    }
+
+    body.light-theme pre.code-content {
+      color: #f8fafc;
+    }
+
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.88em;
+      background-color: var(--bg-card);
+      padding: 2px 5px;
+      border-radius: 4px;
+      border: 1px solid var(--border-color);
+      color: var(--accent-cyan);
+    }
+
+    pre code {
+      background: transparent;
+      border: none;
+      padding: 0;
+      border-radius: 0;
+      color: inherit;
+      font-size: inherit;
+    }
+
+    /* Tabs Component */
+    .tab-container {
+      margin: 20px 0;
+    }
+
+    .tab-header {
+      display: flex;
+      gap: 8px;
+      border-bottom: 1px solid var(--border-color);
+      margin-bottom: 16px;
+    }
+
+    .tab-btn {
+      background: transparent;
+      border: none;
+      padding: 8px 16px;
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.15s ease;
+    }
+
+    .tab-btn:hover {
+      color: var(--text-primary);
+    }
+
+    .tab-btn.active {
+      color: var(--accent-cyan);
+      border-bottom-color: var(--accent-cyan);
+    }
+
+    .tab-pane {
+      display: none;
+    }
+
+    .tab-pane.active {
+      display: block;
+    }
+
+    /* Crates Grid */
+    .crate-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+      margin: 24px 0;
+    }
+
+    .crate-card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      transition: transform 0.15s ease, border-color 0.15s ease;
+    }
+
+    .crate-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--accent-cyan);
+    }
+
+    .crate-title {
+      font-family: var(--font-mono);
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--accent-cyan);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .crate-desc {
+      font-size: 0.88rem;
+      color: var(--text-secondary);
+      flex: 1;
+    }
+
+    .crate-features {
+      list-style: none;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      border-top: 1px solid var(--border-color);
+      padding-top: 10px;
+    }
+
+    .crate-features li {
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .crate-features li::before {
+      content: "▹";
+      color: var(--accent-emerald);
+    }
+
+    /* CLI Filter & Search */
+    .cli-filter-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      margin: 20px 0 24px 0;
+      padding: 16px;
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+    }
+
+    .cli-search-input {
+      flex: 1;
+      min-width: 240px;
+      background-color: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 0.88rem;
+      color: var(--text-primary);
+      outline: none;
+    }
+
+    .cli-search-input:focus {
+      border-color: var(--accent-cyan);
+    }
+
+    .cli-cmd-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .cli-pill {
+      background-color: var(--bg-card-header);
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .cli-pill.active, .cli-pill:hover {
+      background-color: var(--badge-bg);
+      border-color: var(--accent-cyan);
+      color: var(--accent-cyan);
+    }
+
+    .cli-card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      margin-bottom: 24px;
+      overflow: hidden;
+    }
+
+    .cli-card-header {
+      padding: 16px 20px;
+      background-color: var(--bg-card-header);
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .cli-card-title {
+      font-family: var(--font-mono);
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--accent-cyan);
+    }
+
+    .flag-table td:first-child {
+      font-family: var(--font-mono);
+      font-weight: 600;
+      color: var(--accent-cyan);
+      white-space: nowrap;
+    }
+
+    .flag-table td:nth-child(2) {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    /* Math Formulas */
+    .math-card {
+      background-color: var(--bg-card);
+      border-left: 4px solid var(--accent-cyan);
+      border-top: 1px solid var(--border-color);
+      border-right: 1px solid var(--border-color);
+      border-bottom: 1px solid var(--border-color);
+      border-radius: 0 8px 8px 0;
+      padding: 18px 24px;
+      margin: 16px 0;
+    }
+
+    .math-title {
+      font-weight: 700;
+      font-size: 0.95rem;
+      margin-bottom: 8px;
+      color: var(--text-primary);
+    }
+
+    .math-formula {
+      background-color: var(--code-bg);
+      padding: 16px 20px;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+      overflow-x: auto;
+      margin: 8px 0;
+      font-size: 1.04rem;
+      line-height: 1.8;
+      color: var(--text-primary);
+    }
+
+    .math-formula math[display="block"] {
+      margin: 6px 0;
+    }
+
+    /* Footer */
+    footer.doc-footer {
+      border-top: 1px solid var(--border-color);
+      background-color: var(--bg-secondary);
+      padding: 32px 24px;
+      text-align: center;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-top: auto;
+    }
+
+    /* Responsive */
+    @media (max-width: 960px) {
+      aside.sidebar {
+        display: none;
+      }
+      main.content {
+        padding: 24px 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Navigation Header -->
+  <header class="top-nav">
+    <a href="#" class="brand-group">
+      <img src="./assets/icon.svg" alt="Zenith Icon" class="brand-icon">
+      <span class="brand-title">ZENITH // 2.5D</span>
+      <span class="brand-badge">v1.0.0</span>
+    </a>
+    <div class="nav-actions">
+      <a href="https://github.com/federicogmz/zenith" target="_blank" rel="noopener noreferrer" class="nav-btn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
+      <button class="nav-btn" id="theme-toggle" title="Toggle Dark/Light Mode">
+        <span id="theme-icon">☀️</span>
+        <span id="theme-label">Theme</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Workspace Container -->
+  <div class="app-container">
+
+    <!-- Sticky Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="sidebar-search">
+        <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+        <input type="text" id="sidebar-filter" placeholder="Filter sections &amp; flags..." autocomplete="off">
+      </div>
+
+      <div class="nav-section-title">Navigation</div>
+      <ul class="nav-list">
+        <li class="nav-item"><a href="#overview" class="nav-link active"><span>1. Latency Tiers (L0/L1)</span></a></li>
+        <li class="nav-item"><a href="#architecture" class="nav-link"><span>2. Workspace (6 Crates)</span></a></li>
+        <li class="nav-item"><a href="#quickstart" class="nav-link"><span>3. Installation &amp; Run</span></a></li>
+        <li class="nav-item"><a href="#cli-reference" class="nav-link"><span>4. Complete CLI Reference</span></a></li>
+        <li class="nav-item"><a href="#algorithms" class="nav-link"><span>5. Algorithms &amp; Geodesy</span></a></li>
+        <li class="nav-item"><a href="#contract" class="nav-link"><span>6. Contract &amp; Telemetry</span></a></li>
+      </ul>
+
+      <div class="nav-section-title">Subcommands</div>
+      <ul class="nav-list">
+        <li class="nav-item"><a href="#cmd-ortho-rgb" class="nav-link"><code>ortho-rgb</code></a></li>
+        <li class="nav-item"><a href="#cmd-ortho-thermal" class="nav-link"><code>ortho-thermal</code></a></li>
+        <li class="nav-item"><a href="#cmd-mission" class="nav-link"><code>mission</code></a></li>
+        <li class="nav-item"><a href="#cmd-ortho" class="nav-link"><code>ortho</code></a></li>
+        <li class="nav-item"><a href="#cmd-benchmark" class="nav-link"><code>benchmark</code></a></li>
+        <li class="nav-item"><a href="#cmd-validate-contract" class="nav-link"><code>validate-contract</code></a></li>
+      </ul>
+
+      <div class="nav-section-title">Resources</div>
+      <ul class="nav-list">
+        <li class="nav-item"><a href="https://github.com/federicogmz/zenith/blob/main/docs/CONTRACT.md" target="_blank" class="nav-link"><span>📑 CONTRACT.md</span></a></li>
+        <li class="nav-item"><a href="https://github.com/federicogmz/zenith/releases" target="_blank" class="nav-link"><span>📦 Musl Releases</span></a></li>
+      </ul>
+    </aside>
+
+    <!-- Main Content Body -->
+    <main class="content">
+
+      <!-- Hero Header -->
+      <div class="hero">
+        <div class="banner-container">
+          <button class="banner-toggle-btn" id="banner-toggle">📟 View ASCII Art</button>
+          <img src="./assets/logo.svg" alt="Zenith Architecture Banner" id="svg-banner">
+          <pre class="ascii-banner" id="ascii-banner">┌────────────────────────────────────────────────────────────────────────┐
+│  ███████╗███████╗███╗   ██╗██╗████████╗██╗  ██╗   ZENITH PHOTOGRAMMETRY│
+│  ╚══███╔╝██╔════╝████╗  ██║██║╚══██╔══╝██║  ██║   v1.0.0 (Pure Rust)   │
+│    ███╔╝ █████╗  ██╔██╗ ██║██║   ██║   ███████║   Tactical 2.5D Engine │
+│   ███╔╝  ██╔══╝  ██║╚██╗██║██║   ██║   ██╔══██║   &lt; 2 min Thermal L0   │
+│  ███████╗███████╗██║ ╚████║██║   ██║   ██║  ██║   &lt; 3 min Direct Ortho │
+│  ╚══════╝╚══════╝╚═╝  ╚═══╝╚═╝   ╚═╝   ╚═╝  ╚═╝   Multi-CRS EPSG:9377  │
+├────────────────────────────────────────────────────────────────────────┤
+│  3D CAMERA PROJECTION CONES &amp; OVERLAPPING RASTER FOOTPRINTS:           │
+│                                                                        │
+│               [UAV A]                 [UAV B]                          │
+│                 /|\                     /|\                            │
+│               /  |  \     CONES       /  |  \                          │
+│             /    |    \  INTERSECT  /    |    \                        │
+│           /      |      \    ▼    /      |      \                      │
+│        ┌─────────┴───────────┬───────────┴─────────┐                   │
+│        │ ░░░░░░░ │ ▒▒▒▒▒▒▒ ╲ │ ▒▒▒▒▒▒▒ │ ▓▓▓▓▓▓▓▓▓ │  RASTER DEM GRID  │
+│        │ FRAME A │ OVERLAP  ╲│  [A∩B]  │  FRAME B  │  + VORONOI SEAM   │
+│        └─────────┴───────────┴─────────┴───────────┘                   │
+│  • Brown-Conrady Dewarping • Rayon Data Parallelism  • LRF Vertical Datum│
+└────────────────────────────────────────────────────────────────────────┘</pre>
+        </div>
+
+        <p class="hero-tagline">
+          High-performance, standalone photogrammetry engine in pure Rust. Engineered for direct 2.5D orthorectification, continuous DEM ray-marching, and real-time radiometric thermal triage in tactical UAV disaster operations.
+        </p>
+
+        <div class="hero-stats">
+          <div class="stat-card">
+            <div class="stat-val">&gt;370 MP/s</div>
+            <div class="stat-label">In-Memory Compute</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-val emerald">&lt; 2 min</div>
+            <div class="stat-label">Thermal Hotspot Triage</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-val amber">&lt; 3 min</div>
+            <div class="stat-label">2.5D Direct Orthomosaic</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-val purple">0 Overhead</div>
+            <div class="stat-label">Pure Rust / Zero C++</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section 1: Overview & Operational Latency Tiers -->
+      <section id="overview" class="doc-section">
+        <div class="section-header">
+          <h2 class="section-title">1. Operational Latency Tiers</h2>
+          <span class="section-badge">RAPTOR Standard</span>
+        </div>
+        <p class="lead">
+          In emergency scenarios like active wildfire suppression and search &amp; rescue (SAR), full 3D Structure-from-Motion (SfM) pipelines require 30 to 60+ minutes of dense bundle adjustment. Zenith introduces an independent 2.5D direct projection paradigm that bypasses feature matching, projecting sensor frames directly across a continuous Digital Elevation Model (DEM).
+        </p>
+
+        <div class="table-container">
+          <table class="doc-table">
+            <thead>
+              <tr>
+                <th>Tier</th>
+                <th>Operation</th>
+                <th>Latency Target</th>
+                <th>Zenith Pipeline &amp; Strategy</th>
+                <th>Key Deliverables</th>
+                <th>Typical Accuracy</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Level 0</strong></td>
+                <td>Emergency Thermal Triage</td>
+                <td><strong>&lt; 2 minutes</strong></td>
+                <td>Direct ray-DEM centroid intersection without mosaic generation</td>
+                <td>Ranked hotspot vector GeoJSON, instant situational JSON</td>
+                <td>&plusmn;5&ndash;15 m (DEM) / &plusmn;30&ndash;50 m (Flat)</td>
+              </tr>
+              <tr>
+                <td><strong>Level 1</strong></td>
+                <td>Fast Tactical 2.5D Orthomosaic</td>
+                <td><strong>&lt; 3 minutes</strong></td>
+                <td>Direct 2.5D parallel ray-casting with continuous DEM &amp; Voronoi micro-feathering</td>
+                <td>High-resolution Cloud-Optimized GeoTIFF (RGB/Thermal) + Float32 ENVI</td>
+                <td>&plusmn;1&ndash;2 m</td>
+              </tr>
+              <tr>
+                <td><strong>Level 2</strong></td>
+                <td>Full 3D SfM (Companion)</td>
+                <td><strong>30 &ndash; 60 minutes</strong></td>
+                <td>Asynchronous handoff to full photogrammetry (RAPTOR / ODM)</td>
+                <td>Dense 3D point cloud, textured mesh, multispectral NDVI</td>
+                <td>Subm&eacute;trica (&plusmn;0.05&ndash;0.2 m)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Section 2: Workspace Architecture -->
+      <section id="architecture" class="doc-section">
+        <div class="section-header">
+          <h2 class="section-title">2. Workspace Architecture</h2>
+          <span class="section-badge">Pure Rust Workspace</span>
+        </div>
+        <p class="lead">
+          Zenith is built as a clean, highly modular Rust Cargo workspace. Responsibilities are strictly segregated between core 3D geometry, high-order geodesy, continuous DEM sampling, sensor telemetry I/O, and the Rayon-accelerated orthorectification engine.
+        </p>
+
+        <div class="crate-grid">
+          <div class="crate-card">
+            <div class="crate-title">
+              <span>zenith-core</span>
+              <span class="brand-badge">Geometry</span>
+            </div>
+            <div class="crate-desc">
+              Fundamental 3D vector algebra, optical heading camera models, sub-pixel ray casting, and Graham scan 2D convex hull generation.
+            </div>
+            <ul class="crate-features">
+              <li><code>Vector3</code>, <code>Ray3D</code>, orthonormal camera basis</li>
+              <li>Brown-Conrady dynamic lens dewarp inversion</li>
+              <li>Graham Scan O(N log N) Convex Hull &amp; overlap trimming</li>
+            </ul>
+          </div>
+
+          <div class="crate-card">
+            <div class="crate-title">
+              <span>zenith-geo (projection)</span>
+              <span class="brand-badge">Geodesy</span>
+            </div>
+            <div class="crate-desc">
+              High-precision millimetric Transverse Mercator cartographic projection based on 6th-order Kr&uuml;ger series, matching PROJ <code>etmerc</code>.
+            </div>
+            <ul class="crate-features">
+              <li>Colombia Origen Nacional (<code>EPSG:9377</code>)</li>
+              <li>Global UTM North/South zones (<code>EPSG:32601..32760</code>)</li>
+              <li>European &amp; American grids (<code>EPSG:25830</code>, <code>EPSG:26901</code>)</li>
+            </ul>
+          </div>
+
+          <div class="crate-card">
+            <div class="crate-title">
+              <span>zenith-dem (topography)</span>
+              <span class="brand-badge">Surface</span>
+            </div>
+            <div class="crate-desc">
+              In-memory continuous Digital Elevation Model with bilinear cell sampling, 16-step binary bisection ray-marching, and Laplace boundary extrapolation.
+            </div>
+            <ul class="crate-features">
+              <li>Bilinear continuous terrain elevation interpolation</li>
+              <li>Sub-centimeter terrain ray-bisection intersection</li>
+              <li>Harmonic 2D Laplace relaxation for edge NoData cells</li>
+            </ul>
+          </div>
+
+          <div class="crate-card">
+            <div class="crate-title">
+              <span>zenith-io (sensor)</span>
+              <span class="brand-badge">Telemetry</span>
+            </div>
+            <div class="crate-desc">
+              High-throughput DJI XMP metadata parser, <code>geo.txt</code> camera pose reader, and canonical v1.0 photogrammetric contract manifest serializer.
+            </div>
+            <ul class="crate-features">
+              <li>DJI XMP extraction: RTK positioning, gimbal angles, DewarpData</li>
+              <li>Laser Rangefinder (LRF) vertical datum offset calibration</li>
+              <li>Level 1 JSON manifest verification against RAPTOR spec</li>
+            </ul>
+          </div>
+
+          <div class="crate-card">
+            <div class="crate-title">
+              <span>zenith-ortho</span>
+              <span class="brand-badge">Rayon SIMD</span>
+            </div>
+            <div class="crate-desc">
+              Massive multi-threaded direct 2.5D orthorectification engine. Features strict Float32 &deg;C radiometric preservation and visual RGB micro-feathering.
+            </div>
+            <ul class="crate-features">
+              <li>Rayon tile-based parallel back-projection</li>
+              <li>Top-3 Softmin Voronoi-Band seamline micro-feathering</li>
+              <li>Brown-Lowe global exposure gain compensation &amp; dehaze</li>
+            </ul>
+          </div>
+
+          <div class="crate-card">
+            <div class="crate-title">
+              <span>zenith-cli</span>
+              <span class="brand-badge">Binary</span>
+            </div>
+            <div class="crate-desc">
+              Standalone executable CLI offering full pipeline orchestration, contract validation, synthetic benchmarks, and live progress telemetry.
+            </div>
+            <ul class="crate-features">
+              <li>Structured <code>[ZENITH_PROGRESS]</code> stdout telemetry</li>
+              <li>Auto-GSD derivation from sensor size &amp; flight AGL</li>
+              <li>Static musl binary with zero dynamic library dependencies</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 3: Installation & Quickstart -->
+      <section id="quickstart" class="doc-section">
+        <div class="section-header">
+          <h2 class="section-title">3. Installation &amp; Quickstart</h2>
+          <span class="section-badge">Zero Dependencies</span>
+        </div>
+        <p class="lead">
+          Zenith compiles to a single, self-contained static binary. Choose between downloading pre-compiled Musl binaries or building from source with Cargo.
+        </p>
+
+        <div class="tab-container">
+          <div class="tab-header">
+            <button class="tab-btn active" data-tab="tab-install-binary">Standalone Linux x86_64 Binary</button>
+            <button class="tab-btn" data-tab="tab-install-source">Build from Source</button>
+          </div>
+
+          <div class="tab-pane active" id="tab-install-binary">
+            <p>Download the pre-compiled standalone binary for <code>Linux x86_64</code> (zero external runtime dependencies):</p>
+            <div class="code-wrapper">
+              <div class="code-header">
+                <span>Bash &bull; Release Download</span>
+                <button class="copy-btn">Copy</button>
+              </div>
+              <pre class="code-content"><code># Download the standalone Linux x86_64 binary from GitHub Releases
+curl -sSL -o zenith https://github.com/federicogmz/zenith/releases/download/v1.0.0/zenith-v1.0.0-linux-x86_64
+chmod +x zenith
+sudo mv zenith /usr/local/bin/
+
+# Verify binary execution
+zenith --version</code></pre>
+            </div>
+          </div>
+
+          <div class="tab-pane" id="tab-install-source">
+            <p>Compile natively with Rust 1.80+ for maximum CPU SIMD optimization:</p>
+            <div class="code-wrapper">
+              <div class="code-header">
+                <span>Bash &bull; Cargo Build</span>
+                <button class="copy-btn">Copy</button>
+              </div>
+              <pre class="code-content"><code># Clone repository
+git clone https://github.com/federicogmz/zenith.git
+cd zenith
+
+# Compile release build with LTO and native codegen
+cargo build --release
+
+# The compiled binary is located at target/release/zenith
+./target/release/zenith info</code></pre>
+            </div>
+          </div>
+        </div>
+
+        <h3 style="margin: 28px 0 12px 0;">Quickstart Pipelines</h3>
+        <div class="tab-container">
+          <div class="tab-header">
+            <button class="tab-btn active" data-tab="tab-qs-rgb">Visual RGB</button>
+            <button class="tab-btn" data-tab="tab-qs-thermal">Radiometric Thermal</button>
+            <button class="tab-btn" data-tab="tab-qs-mission">Mission Analysis</button>
+            <button class="tab-btn" data-tab="tab-qs-bench">Synthetic Benchmark</button>
+          </div>
+
+          <div class="tab-pane active" id="tab-qs-rgb">
+            <p>Generate a seamless visual RGB orthomosaic with automatic GSD calculation, Voronoi micro-feathering, and global exposure gain compensation:</p>
+            <div class="code-wrapper">
+              <div class="code-header">
+                <span>Bash &bull; zenith ortho-rgb</span>
+                <button class="copy-btn">Copy</button>
+              </div>
+              <pre class="code-content"><code>zenith ortho-rgb \
+  --images /path/to/flight_dji_rgb/ \
+  --dem /path/to/local_dtm.tif \
+  --output output/rgb_orthomosaic.tif \
+  --crs EPSG:9377 \
+  --blend-mode micro-feather \
+  --feather-px 25.0 \
+  --gain-compensation \
+  --trim both \
+  --min-overlap 2 \
+  --hull-geojson output/rgb_convex_hull.geojson \
+  --manifest output/manifest_level1_rgb.json</code></pre>
+            </div>
+          </div>
+
+          <div class="tab-pane" id="tab-qs-thermal">
+            <p>Generate a calibrated radiometric thermal orthomosaic with strict physical &deg;C preservation and active fire hotspot protection:</p>
+            <div class="code-wrapper">
+              <div class="code-header">
+                <span>Bash &bull; zenith ortho-thermal</span>
+                <button class="copy-btn">Copy</button>
+              </div>
+              <pre class="code-content"><code>zenith ortho-thermal \
+  --images /path/to/flight_dji_thermal/ \
+  --raw-dir /path/to/thermal_floats_celsius/ \
+  --dem /path/to/local_dtm.tif \
+  --output output/thermal_orthomosaic.tif \
+  --crs auto \
+  --gsd 0.15 \
+  --resampling nearest \
+  --feather-px 6.0 \
+  --max-blend-temp-diff 3.5 \
+  --trim both \
+  --hull-geojson output/thermal_hull.geojson \
+  --manifest output/manifest_level1.json</code></pre>
+            </div>
+          </div>
+
+          <div class="tab-pane" id="tab-qs-mission">
+            <p>Compute 3D camera footprints, telemetry poses, and ground footprints across the terrain elevation model:</p>
+            <div class="code-wrapper">
+              <div class="code-header">
+                <span>Bash &bull; zenith mission</span>
+                <button class="copy-btn">Copy</button>
+              </div>
+              <pre class="code-content"><code>zenith mission \
+  --images /path/to/flight_dji/ \
+  --dem /path/to/local_dtm.tif \
+  --datum-offset 0.0 \
+  --max-pitch -70.0 \
+  --output output/flight_footprints.geojson</code></pre>
+            </div>
+          </div>
+
+          <div class="tab-pane" id="tab-qs-bench">
+            <p>Stress-test multicore direct ray-casting throughput on synthetic DEM surfaces:</p>
+            <div class="code-wrapper">
+              <div class="code-header">
+                <span>Bash &bull; zenith benchmark</span>
+                <button class="copy-btn">Copy</button>
+              </div>
+              <pre class="code-content"><code># Run 100-frame Rayon benchmark on a 1000x1000 synthetic DEM
+zenith benchmark --frames 100 --dem-size 1000 --gsd 0.15</code></pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 4: Complete CLI Reference -->
+      <section id="cli-reference" class="doc-section">
+        <div class="section-header">
+          <h2 class="section-title">4. Complete CLI Reference</h2>
+          <span class="section-badge">Interactive Filter</span>
+        </div>
+        <p class="lead">
+          Verified command-line interface specification for Zenith v1.0.0. All subcommands, options, and flags below are verified against the binary <code>--help</code> output. Use the search bar to filter flags live.
+        </p>
+
+        <div class="cli-filter-bar">
+          <input type="text" id="cli-filter-input" class="cli-search-input" placeholder="Type flag name or keyword (e.g. feather, crs, datum, blend, dem-source)...">
+          <div class="cli-cmd-pills">
+            <button class="cli-pill active" data-cmd="all">ALL COMMANDS</button>
+            <button class="cli-pill" data-cmd="ortho-rgb">ortho-rgb</button>
+            <button class="cli-pill" data-cmd="ortho-thermal">ortho-thermal</button>
+            <button class="cli-pill" data-cmd="mission">mission</button>
+            <button class="cli-pill" data-cmd="ortho">ortho</button>
+            <button class="cli-pill" data-cmd="benchmark">benchmark</button>
+            <button class="cli-pill" data-cmd="validate-contract">validate-contract</button>
+          </div>
+        </div>
+
+        <!-- Command: ortho-rgb -->
+        <div class="cli-card" id="cmd-ortho-rgb" data-cmd="ortho-rgb">
+          <div class="cli-card-header">
+            <div class="cli-card-title">zenith ortho-rgb</div>
+            <span class="brand-badge">Visual 2.5D</span>
+          </div>
+          <p style="padding: 12px 20px; font-size: 0.88rem; color: var(--text-secondary);">
+            Generates a visual RGB direct 2.5D orthomosaic with Top-3 Softmin Voronoi-Band seamline feathering, Brown-Lowe global exposure gain compensation, and atmospheric dehaze.
+          </p>
+          <div class="table-container" style="margin: 0; border: none; border-top: 1px solid var(--border-color);">
+            <table class="doc-table flag-table">
+              <thead>
+                <tr>
+                  <th>Option / Flag</th>
+                  <th>Type &bull; Default</th>
+                  <th>Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr data-keywords="images input directory rgb jpeg">
+                  <td><code>-i, --images &lt;IMAGES&gt;</code></td>
+                  <td>PathBuf &bull; Required</td>
+                  <td>Directory containing RGB JPEG source images.</td>
+                </tr>
+                <tr data-keywords="dem elevation dtm geotiff vrt envi">
+                  <td><code>--dem &lt;DEM&gt;</code></td>
+                  <td>PathBuf &bull; Optional</td>
+                  <td>Path to local DEM raster (GeoTIFF .tif, VRT, or ENVI .hdr/.raw). Conflicts with <code>--dem-source</code> and <code>--flat-elevation</code>.</td>
+                </tr>
+                <tr data-keywords="dem-source copernicus flat auto cascade aws">
+                  <td><code>--dem-source &lt;SOURCE&gt;</code></td>
+                  <td>auto | copernicus | flat &bull; auto</td>
+                  <td>Elevation source policy: <code>auto</code> (Local DEM &rarr; Copernicus 30m via AWS &rarr; Flat plane fallback), <code>copernicus</code>, or <code>flat</code>.</td>
+                </tr>
+                <tr data-keywords="flat-elevation contingency meters">
+                  <td><code>--flat-elevation &lt;ELEV&gt;</code></td>
+                  <td>f64 &bull; Optional</td>
+                  <td>Explicit constant elevation in meters for flat contingency plane.</td>
+                </tr>
+                <tr data-keywords="output tif raw hdr target">
+                  <td><code>-o, --output &lt;OUTPUT&gt;</code></td>
+                  <td>PathBuf &bull; rgb_orthomosaic_rust_dem2m.tif</td>
+                  <td>Destination path for orthomosaic output (.tif or .raw/.hdr).</td>
+                </tr>
+                <tr data-keywords="gsd ground sampling distance auto resolution">
+                  <td><code>--gsd &lt;GSD&gt;</code></td>
+                  <td>f64 &bull; 0.0</td>
+                  <td>Target ground sampling distance in meters/pixel. <code>0.0</code> enables automatic optimal GSD calculation from sensor pixel pitch and flight altitude.</td>
+                </tr>
+                <tr data-keywords="datum-offset geoid undulation lrf vertical">
+                  <td><code>--datum-offset &lt;OFFSET&gt;</code></td>
+                  <td>f64 &bull; 0.0</td>
+                  <td>Geoidal vertical offset N in meters (H = h - N) to calibrate ellipsoidal GNSS height to orthometric elevation.</td>
+                </tr>
+                <tr data-keywords="blend-mode micro-feather best-nadir feather voronoi">
+                  <td><code>--blend-mode &lt;MODE&gt;</code></td>
+                  <td>micro-feather | best-nadir | feather</td>
+                  <td>Blending algorithm: <code>micro-feather</code> (Top-3 Softmin Voronoi-Band), <code>best-nadir</code>, or <code>feather</code>. Default: <code>micro-feather</code>.</td>
+                </tr>
+                <tr data-keywords="feather-px ramp pixels seam">
+                  <td><code>--feather-px &lt;PX&gt;</code></td>
+                  <td>f64 &bull; 25.0</td>
+                  <td>Feathering transition ramp width in image sensor pixels.</td>
+                </tr>
+                <tr data-keywords="gain-compensation brown-lowe exposure balance">
+                  <td><code>--gain-compensation</code></td>
+                  <td>flag &bull; active by default</td>
+                  <td>Forces Brown-Lowe linear exposure gain compensation across camera frames.</td>
+                </tr>
+                <tr data-keywords="no-gain-compensation disable gain">
+                  <td><code>--no-gain-compensation</code></td>
+                  <td>flag &bull; false</td>
+                  <td>Disables global exposure gain compensation.</td>
+                </tr>
+                <tr data-keywords="dehaze dark channel atmospheric haze">
+                  <td><code>--dehaze</code></td>
+                  <td>flag &bull; false</td>
+                  <td>Enables dark-channel prior haze removal to eliminate atmospheric edge haze.</td>
+                </tr>
+                <tr data-keywords="tile-size rayon chunk threads">
+                  <td><code>--tile-size &lt;SIZE&gt;</code></td>
+                  <td>usize &bull; 512</td>
+                  <td>Tile block size in pixels for Rayon multi-threaded worker dispatch.</td>
+                </tr>
+                <tr data-keywords="max-pitch gimbal nadir filter angle">
+                  <td><code>--max-pitch &lt;PITCH&gt;</code></td>
+                  <td>f64 &bull; -70.0</td>
+                  <td>Maximum allowable pitch angle in degrees (e.g. -70&deg;) to filter transit frames and retain nadir mapping angles.</td>
+                </tr>
+                <tr data-keywords="trim hull overlap both none crop">
+                  <td><code>--trim &lt;TRIM&gt;</code></td>
+                  <td>both | hull | overlap | none &bull; both</td>
+                  <td>Spatial boundary trimming mode. <code>both</code> applies Convex Hull AND concurrent stereo overlap trimming.</td>
+                </tr>
+                <tr data-keywords="min-overlap stereo count frames">
+                  <td><code>--min-overlap &lt;COUNT&gt;</code></td>
+                  <td>u16 &bull; 2</td>
+                  <td>Minimum concurrent stereo photo overlap count. Default <code>2</code> eliminates boundary fringe pixels without stereoscopic coverage.</td>
+                </tr>
+                <tr data-keywords="center-crop sensor contraction hull">
+                  <td><code>--center-crop &lt;CROP&gt;</code></td>
+                  <td>f64 &bull; 0.75</td>
+                  <td>Central sensor contraction factor (0.5 - 1.0) for building the conservative flight convex hull polygon.</td>
+                </tr>
+                <tr data-keywords="hull-geojson export polygon geometry">
+                  <td><code>--hull-geojson &lt;PATH&gt;</code></td>
+                  <td>PathBuf &bull; Optional</td>
+                  <td>Optional output path to export the calculated Convex Hull boundary polygon as GeoJSON.</td>
+                </tr>
+                <tr data-keywords="manifest contract json level1">
+                  <td><code>-m, --manifest &lt;PATH&gt;</code></td>
+                  <td>PathBuf &bull; manifest_level1_rgb.json</td>
+                  <td>Output destination for the Level 1 Photogrammetric Contract JSON manifest.</td>
+                </tr>
+                <tr data-keywords="crs epsg projection 9377 utm auto">
+                  <td><code>--crs &lt;CRS&gt;</code></td>
+                  <td>String &bull; EPSG:9377</td>
+                  <td>Projected Coordinate Reference System: <code>EPSG:9377</code> (Colombia Origen Nacional), <code>EPSG:32618</code>, <code>auto</code>, <code>utm</code>.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Command: ortho-thermal -->
+        <div class="cli-card" id="cmd-ortho-thermal" data-cmd="ortho-thermal">
+          <div class="cli-card-header">
+            <div class="cli-card-title">zenith ortho-thermal</div>
+            <span class="brand-badge" style="color: var(--accent-amber);">Radiometric &deg;C</span>
+          </div>
+          <p style="padding: 12px 20px; font-size: 0.88rem; color: var(--text-secondary);">
+            Generates a direct 2.5D radiometric thermal orthomosaic with strict physical Float32 &deg;C preservation, Nearest-Neighbor cell resampling, and active fire hotspot protection.
+          </p>
+          <div class="table-container" style="margin: 0; border: none; border-top: 1px solid var(--border-color);">
+            <table class="doc-table flag-table">
+              <thead>
+                <tr>
+                  <th>Option / Flag</th>
+                  <th>Type &bull; Default</th>
+                  <th>Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr data-keywords="images thermal directory source">
+                  <td><code>-i, --images &lt;IMAGES&gt;</code></td>
+                  <td>PathBuf &bull; Required</td>
+                  <td>Directory containing thermal image frames.</td>
+                </tr>
+                <tr data-keywords="raw-dir float32 celsius raw directory">
+                  <td><code>--raw-dir &lt;RAW_DIR&gt;</code></td>
+                  <td>PathBuf &bull; Required</td>
+                  <td>Directory containing extracted Float32 temperature arrays in true degrees Celsius (&deg;C).</td>
+                </tr>
+                <tr data-keywords="output thermal tif geotiff envi">
+                  <td><code>-o, --output &lt;OUTPUT&gt;</code></td>
+                  <td>PathBuf &bull; thermal_orthomosaic_dem2m.tif</td>
+                  <td>Destination path for the thermal orthomosaic GeoTIFF or ENVI raster.</td>
+                </tr>
+                <tr data-keywords="gsd thermal resolution pixel">
+                  <td><code>--gsd &lt;GSD&gt;</code></td>
+                  <td>f64 &bull; 0.15</td>
+                  <td>Target ground sampling distance in meters/pixel (default 0.15m = 15cm for crisp thermal definition).</td>
+                </tr>
+                <tr data-keywords="resampling nearest bilinear radiometric integrity">
+                  <td><code>--resampling &lt;METHOD&gt;</code></td>
+                  <td>nearest | bilinear &bull; nearest</td>
+                  <td>Pixel resampling method. <code>nearest</code> is mandatory under RAPTOR contract to preserve unaltered physical thermal values.</td>
+                </tr>
+                <tr data-keywords="feather-px seam voronoi bandwidth">
+                  <td><code>--feather-px &lt;PX&gt;</code></td>
+                  <td>f64 &bull; 6.0</td>
+                  <td>Voronoi seam transition bandwidth in sensor pixels (default 6.0 px; set to 0.0 for pure hard Voronoi tessellation).</td>
+                </tr>
+                <tr data-keywords="max-blend-temp-diff hotspot wildfire protection fire">
+                  <td><code>--max-blend-temp-diff &lt;DEG&gt;</code></td>
+                  <td>f32 &bull; 3.5</td>
+                  <td>Maximum temperature difference in &deg;C allowed for seam blending. Prevents synthetic dilution of intense wildfire fronts and hot spot cores.</td>
+                </tr>
+                <tr data-keywords="min-overlap thermal perimeter perimeter">
+                  <td><code>--min-overlap &lt;COUNT&gt;</code></td>
+                  <td>u16 &bull; 1</td>
+                  <td>Minimum concurrent photo overlap count (default 1 to retain full 40mm thermal sensor perimeter).</td>
+                </tr>
+                <tr data-keywords="center-crop thermal footprint crop">
+                  <td><code>--center-crop &lt;CROP&gt;</code></td>
+                  <td>f64 &bull; 0.92</td>
+                  <td>Central sensor contraction factor for building the thermal Convex Hull polygon (default 0.92).</td>
+                </tr>
+                <tr data-keywords="manifest contract json level1">
+                  <td><code>-m, --manifest &lt;PATH&gt;</code></td>
+                  <td>PathBuf &bull; manifest_level1.json</td>
+                  <td>Output destination for the Level 1 Photogrammetric Contract JSON manifest.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Command: mission -->
+        <div class="cli-card" id="cmd-mission" data-cmd="mission">
+          <div class="cli-card-header">
+            <div class="cli-card-title">zenith mission</div>
+            <span class="brand-badge">Footprints &amp; Telemetry</span>
+          </div>
+          <p style="padding: 12px 20px; font-size: 0.88rem; color: var(--text-secondary);">
+            Batch processes flight imagery and elevation surface models to calculate precise 3D camera footprints, telemetry poses, and coverage boundaries in GeoJSON format.
+          </p>
+          <div class="table-container" style="margin: 0; border: none; border-top: 1px solid var(--border-color);">
+            <table class="doc-table flag-table">
+              <thead>
+                <tr>
+                  <th>Option / Flag</th>
+                  <th>Type &bull; Default</th>
+                  <th>Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr data-keywords="images flight dji input">
+                  <td><code>-i, --images &lt;IMAGES&gt;</code></td>
+                  <td>PathBuf &bull; Required</td>
+                  <td>Directory containing thermal or visual flight images.</td>
+                </tr>
+                <tr data-keywords="output geojson footprints mission">
+                  <td><code>-o, --output &lt;OUTPUT&gt;</code></td>
+                  <td>PathBuf &bull; mission_footprints.geojson</td>
+                  <td>Output path for the computed mission footprints and telemetry GeoJSON.</td>
+                </tr>
+                <tr data-keywords="dem elevation dtm terrain">
+                  <td><code>--dem &lt;DEM&gt;</code></td>
+                  <td>PathBuf &bull; Optional</td>
+                  <td>Path to the DEM raster file (GeoTIFF <code>.tif</code>, VRT, or ENVI).</td>
+                </tr>
+                <tr data-keywords="datum-offset geoid lrf vertical">
+                  <td><code>--datum-offset &lt;OFFSET&gt;</code></td>
+                  <td>f64 &bull; 0.0</td>
+                  <td>Geoidal undulation offset <em>N</em> in meters for orthometric vertical calibration.</td>
+                </tr>
+                <tr data-keywords="max-pitch nadir angle filter">
+                  <td><code>--max-pitch &lt;PITCH&gt;</code></td>
+                  <td>f64 &bull; -70.0</td>
+                  <td>Maximum allowable camera pitch angle for nadir mapping (degrees).</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Command: ortho -->
+        <div class="cli-card" id="cmd-ortho" data-cmd="ortho">
+          <div class="cli-card-header">
+            <div class="cli-card-title">zenith ortho</div>
+            <span class="brand-badge">Core 2.5D</span>
+          </div>
+          <p style="padding: 12px 20px; font-size: 0.88rem; color: var(--text-secondary);">
+            Executes the direct 2.5D back-projection pipeline using an external <code>geo.txt</code> camera pose file.
+          </p>
+          <div class="table-container" style="margin: 0; border: none; border-top: 1px solid var(--border-color);">
+            <table class="doc-table flag-table">
+              <thead>
+                <tr>
+                  <th>Option / Flag</th>
+                  <th>Type &bull; Default</th>
+                  <th>Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr data-keywords="geo camera coordinates poses geo.txt">
+                  <td><code>-g, --geo &lt;GEO&gt;</code></td>
+                  <td>PathBuf &bull; Required</td>
+                  <td>Path to the <code>geo.txt</code> file containing camera coordinates and orientations.</td>
+                </tr>
+                <tr data-keywords="output bin tif orthomosaic">
+                  <td><code>-o, --output &lt;OUTPUT&gt;</code></td>
+                  <td>PathBuf &bull; orthomosaic.bin</td>
+                  <td>Output product file path (<code>.tif</code> or <code>.bin</code>).</td>
+                </tr>
+                <tr data-keywords="gsd target resolution">
+                  <td><code>--gsd &lt;GSD&gt;</code></td>
+                  <td>f64 &bull; 0.1</td>
+                  <td>Target ground sampling distance in meters per pixel (default: 0.1 m = 10 cm).</td>
+                </tr>
+                <tr data-keywords="datum-offset aburra geoid -24">
+                  <td><code>--datum-offset &lt;OFFSET&gt;</code></td>
+                  <td>f64 &bull; -24.0</td>
+                  <td>Geoidal offset <em>N</em> in meters (<em>H = h &minus; N</em>, default: &minus;24.0 m for the Aburr&aacute; Valley).</td>
+                </tr>
+                <tr data-keywords="plane-alt contingency elevation">
+                  <td><code>--plane-alt &lt;ALT&gt;</code></td>
+                  <td>f64 &bull; 1500.0</td>
+                  <td>Contingency flat-plane elevation in meters when no external DEM is specified.</td>
+                </tr>
+                <tr data-keywords="resampling nearest bilinear">
+                  <td><code>--resampling &lt;METHOD&gt;</code></td>
+                  <td>String &bull; nearest</td>
+                  <td>Resampling kernel: <code>nearest</code> (radiometric thermal) or <code>bilinear</code> (visual RGB).</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Command: benchmark -->
+        <div class="cli-card" id="cmd-benchmark" data-cmd="benchmark">
+          <div class="cli-card-header">
+            <div class="cli-card-title">zenith benchmark</div>
+            <span class="brand-badge">Throughput</span>
+          </div>
+          <p style="padding: 12px 20px; font-size: 0.88rem; color: var(--text-secondary);">
+            Runs synthetic multithreaded Rayon performance benchmarks simulating direct 2.5D terrain ray-casting across multicore CPUs.
+          </p>
+          <div class="table-container" style="margin: 0; border: none; border-top: 1px solid var(--border-color);">
+            <table class="doc-table flag-table">
+              <thead>
+                <tr>
+                  <th>Option / Flag</th>
+                  <th>Type &bull; Default</th>
+                  <th>Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr data-keywords="frames count simulation">
+                  <td><code>-f, --frames &lt;FRAMES&gt;</code></td>
+                  <td>usize &bull; 50</td>
+                  <td>Number of synthetic camera frames to simulate.</td>
+                </tr>
+                <tr data-keywords="dem-size grid dimensions cells">
+                  <td><code>-d, --dem-size &lt;SIZE&gt;</code></td>
+                  <td>usize &bull; 1000</td>
+                  <td>Dimensions of the synthetic DEM grid in cells (<em>N &times; N</em>).</td>
+                </tr>
+                <tr data-keywords="gsd benchmark resolution">
+                  <td><code>-g, --gsd &lt;GSD&gt;</code></td>
+                  <td>f64 &bull; 0.2</td>
+                  <td>Target ground sampling distance in meters.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Command: validate-contract -->
+        <div class="cli-card" id="cmd-validate-contract" data-cmd="validate-contract">
+          <div class="cli-card-header">
+            <div class="cli-card-title">zenith validate-contract</div>
+            <span class="brand-badge">Audit</span>
+          </div>
+          <p style="padding: 12px 20px; font-size: 0.88rem; color: var(--text-secondary);">
+            Validates an engine manifest against the formal RAPTOR Photogrammetric Contract specification v1.0.
+          </p>
+          <div class="table-container" style="margin: 0; border: none; border-top: 1px solid var(--border-color);">
+            <table class="doc-table flag-table">
+              <thead>
+                <tr>
+                  <th>Option / Flag</th>
+                  <th>Type &bull; Default</th>
+                  <th>Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr data-keywords="manifest json contract path validate">
+                  <td><code>-m, --manifest &lt;MANIFEST&gt;</code></td>
+                  <td>PathBuf &bull; Required</td>
+                  <td>Path to the <code>manifest.json</code> file to validate against the contract schema.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 5: How It Works (Algorithms & Mathematics) -->
+      <section id="algorithms" class="doc-section">
+        <div class="section-header">
+          <h2 class="section-title">5. Algorithms &amp; Mathematics</h2>
+          <span class="section-badge">Scientific Rigor</span>
+        </div>
+        <p class="lead">
+          Zenith pairs high-order cartographic geodesy with continuous surface ray-marching and radiometric optical models, delivering rigorous geometric accuracy without iterative bundle adjustment.
+        </p>
+
+        <!-- 5.1 Geodesy -->
+        <h3 style="margin: 24px 0 8px 0; color: var(--accent-cyan);">5.1 Multi-CRS Transverse Mercator Geodesy</h3>
+        <p>
+          Coordinates are projected via 6th-order Kr&uuml;ger series expansions on the GRS80/WGS84 ellipsoids, achieving millimetric congruence with PROJ <code>etmerc</code>:
+        </p>
+        <div class="math-card">
+          <div class="math-title">Conformal Series Expansions</div>
+          <div class="math-formula">
+            <math display="block">
+              <mi>X</mi><mo>=</mo><msub><mi>X</mi><mn>0</mn></msub><mo>+</mo><msub><mi>k</mi><mn>0</mn></msub><mi>N</mi>
+              <mrow><mo>[</mo>
+                <mi>A</mi><mo>+</mo><mrow><mo>(</mo><mn>1</mn><mo>&minus;</mo><mi>T</mi><mo>+</mo><mi>C</mi><mo>)</mo></mrow><mfrac><msup><mi>A</mi><mn>3</mn></msup><mn>6</mn></mfrac>
+                <mo>+</mo><mrow><mo>(</mo><mn>5</mn><mo>&minus;</mo><mn>18</mn><mi>T</mi><mo>+</mo><msup><mi>T</mi><mn>2</mn></msup><mo>+</mo><mn>72</mn><mi>C</mi><mo>&minus;</mo><mn>58</mn><msup><mrow><mi>e</mi><mo>&prime;</mo></mrow><mn>2</mn></msup><mo>)</mo></mrow><mfrac><msup><mi>A</mi><mn>5</mn></msup><mn>120</mn></mfrac>
+              <mo>]</mo></mrow>
+            </math>
+            <math display="block">
+              <mi>Y</mi><mo>=</mo><msub><mi>Y</mi><mn>0</mn></msub><mo>+</mo><msub><mi>k</mi><mn>0</mn></msub>
+              <mrow><mo>[</mo>
+                <mi>M</mi><mo>+</mo><mi>N</mi><mi>tan</mi><mi>&phi;</mi>
+                <mrow><mo>(</mo>
+                  <mfrac><msup><mi>A</mi><mn>2</mn></msup><mn>2</mn></mfrac>
+                  <mo>+</mo><mrow><mo>(</mo><mn>5</mn><mo>&minus;</mo><mi>T</mi><mo>+</mo><mn>9</mn><mi>C</mi><mo>+</mo><mn>4</mn><msup><mi>C</mi><mn>2</mn></msup><mo>)</mo></mrow><mfrac><msup><mi>A</mi><mn>4</mn></msup><mn>24</mn></mfrac>
+                  <mo>+</mo><mrow><mo>(</mo><mn>61</mn><mo>&minus;</mo><mn>58</mn><mi>T</mi><mo>+</mo><msup><mi>T</mi><mn>2</mn></msup><mo>+</mo><mn>600</mn><mi>C</mi><mo>&minus;</mo><mn>330</mn><msup><mrow><mi>e</mi><mo>&prime;</mo></mrow><mn>2</mn></msup><mo>)</mo></mrow><mfrac><msup><mi>A</mi><mn>6</mn></msup><mn>720</mn></mfrac>
+                <mo>)</mo></mrow>
+              <mo>]</mo></mrow>
+            </math>
+          </div>
+          <p style="font-size: 0.84rem; color: var(--text-muted); margin-top: 6px;">
+            Supports Colombian Origen Nacional (<code>EPSG:9377</code>: Lat 4&deg;N, Lon 73&deg;W, <math><msub><mi>k</mi><mn>0</mn></msub><mo>=</mo><mn>0.9992</mn></math>, <math><msub><mi>X</mi><mn>0</mn></msub><mo>=</mo><mn>5,000,000</mn><mtext>&nbsp;m</mtext></math>, <math><msub><mi>Y</mi><mn>0</mn></msub><mo>=</mo><mn>2,000,000</mn><mtext>&nbsp;m</mtext></math>), global UTM Zones 1N&ndash;60N / 1S&ndash;60S (<code>EPSG:32601..32760</code>), European UTM 28N&ndash;38N (<code>EPSG:25828..25838</code>), and automated zone derivation (<code>--crs auto</code>).
+          </p>
+        </div>
+
+        <!-- 5.2 Optics -->
+        <h3 style="margin: 28px 0 8px 0; color: var(--accent-cyan);">5.2 Gimbal-Lock-Free Optical Heading &amp; Brown-Conrady Dewarping</h3>
+        <p>
+          Camera orientations are computed directly in local East-North-Up (ENU) coordinates from DJI gimbal angles <math><mrow><mo>(</mo><msub><mi>&psi;</mi><mtext>yaw</mtext></msub><mo>,</mo><msub><mi>&theta;</mi><mtext>pitch</mtext></msub><mo>,</mo><msub><mi>&phi;</mi><mtext>roll</mtext></msub><mo>)</mo></mrow></math>. The forward optical vector <math><msub><mover><mi>z</mi><mo>&rarr;</mo></mover><mi>c</mi></msub></math> and orthogonal image axes <math><mrow><mo>(</mo><msubsup><mover><mi>x</mi><mo>&rarr;</mo></mover><mi>c</mi><mo>&prime;</mo></msubsup><mo>,</mo><msubsup><mover><mi>u</mi><mo>&rarr;</mo></mover><mtext>top</mtext><mo>&prime;</mo></msubsup><mo>)</mo></mrow></math> eliminate gimbal lock singularities:
+        </p>
+        <div class="math-card">
+          <div class="math-title">Orthonormal Camera Basis in ENU</div>
+          <div class="math-formula">
+            <math display="block">
+              <msub><mover><mi>z</mi><mo>&rarr;</mo></mover><mi>c</mi></msub><mo>=</mo>
+              <mrow><mo>[</mo><mi>cos</mi><mi>&theta;</mi><mspace width="0.2em"/><mi>sin</mi><mi>&psi;</mi><mo>,</mo><mspace width="0.5em"/><mi>cos</mi><mi>&theta;</mi><mspace width="0.2em"/><mi>cos</mi><mi>&psi;</mi><mo>,</mo><mspace width="0.5em"/><mi>sin</mi><mi>&theta;</mi><mo>]</mo></mrow>
+            </math>
+            <math display="block">
+              <msub><mover><mi>x</mi><mo>&rarr;</mo></mover><mi>c</mi></msub><mo>=</mo>
+              <mrow><mo>[</mo><mi>cos</mi><mi>&psi;</mi><mo>,</mo><mspace width="0.5em"/><mo>&minus;</mo><mi>sin</mi><mi>&psi;</mi><mo>,</mo><mspace width="0.5em"/><mn>0</mn><mo>]</mo></mrow>
+              <mspace width="1.2em"/><mtext>and</mtext><mspace width="1.2em"/>
+              <msub><mover><mi>u</mi><mo>&rarr;</mo></mover><mtext>top</mtext></msub><mo>=</mo>
+              <mrow><mo>[</mo><mo>&minus;</mo><mi>sin</mi><mi>&theta;</mi><mspace width="0.2em"/><mi>sin</mi><mi>&psi;</mi><mo>,</mo><mspace width="0.5em"/><mo>&minus;</mo><mi>sin</mi><mi>&theta;</mi><mspace width="0.2em"/><mi>cos</mi><mi>&psi;</mi><mo>,</mo><mspace width="0.5em"/><mi>cos</mi><mi>&theta;</mi><mo>]</mo></mrow>
+            </math>
+            <math display="block">
+              <msubsup><mover><mi>x</mi><mo>&rarr;</mo></mover><mi>c</mi><mo>&prime;</mo></msubsup><mo>=</mo>
+              <mtext>normalize</mtext><mrow><mo>(</mo><msub><mover><mi>x</mi><mo>&rarr;</mo></mover><mi>c</mi></msub><mi>cos</mi><mi>&phi;</mi><mo>+</mo><msub><mover><mi>u</mi><mo>&rarr;</mo></mover><mtext>top</mtext></msub><mi>sin</mi><mi>&phi;</mi><mo>)</mo></mrow>
+              <mo>,</mo><mspace width="1.2em"/>
+              <msubsup><mover><mi>u</mi><mo>&rarr;</mo></mover><mtext>top</mtext><mo>&prime;</mo></msubsup><mo>=</mo>
+              <mtext>normalize</mtext><mrow><mo>(</mo><mo>&minus;</mo><msub><mover><mi>x</mi><mo>&rarr;</mo></mover><mi>c</mi></msub><mi>sin</mi><mi>&phi;</mi><mo>+</mo><msub><mover><mi>u</mi><mo>&rarr;</mo></mover><mtext>top</mtext></msub><mi>cos</mi><mi>&phi;</mi><mo>)</mo></mrow>
+            </math>
+          </div>
+        </div>
+        <p>
+          Sensor lens distortions are modeled via the Brown-Conrady formulation extracted dynamically from DJI XMP <code>DewarpData</code> (<math><mrow><msub><mi>f</mi><mi>x</mi></msub><mo>,</mo><msub><mi>f</mi><mi>y</mi></msub><mo>,</mo><msub><mi>c</mi><mi>x</mi></msub><mo>,</mo><msub><mi>c</mi><mi>y</mi></msub><mo>,</mo><msub><mi>k</mi><mn>1</mn></msub><mo>,</mo><msub><mi>k</mi><mn>2</mn></msub><mo>,</mo><msub><mi>p</mi><mn>1</mn></msub><mo>,</mo><msub><mi>p</mi><mn>2</mn></msub><mo>,</mo><msub><mi>k</mi><mn>3</mn></msub></mrow></math>). During back-projection, undistorted coordinates <math><mrow><mo>(</mo><msub><mi>x</mi><mi>n</mi></msub><mo>,</mo><msub><mi>y</mi><mi>n</mi></msub><mo>)</mo></mrow></math> are reconstructed via Newton-Raphson fixed-point iteration until <math><mrow><mo>&Vert;</mo><mrow><mo>(</mo><msubsup><mi>x</mi><mi>n</mi><mrow><mo>(</mo><mi>k</mi><mo>+</mo><mn>1</mn><mo>)</mo></mrow></msubsup><mo>,</mo><msubsup><mi>y</mi><mi>n</mi><mrow><mo>(</mo><mi>k</mi><mo>+</mo><mn>1</mn><mo>)</mo></mrow></msubsup><mo>)</mo></mrow><mo>&minus;</mo><mrow><mo>(</mo><msubsup><mi>x</mi><mi>n</mi><mrow><mo>(</mo><mi>k</mi><mo>)</mo></mrow></msubsup><mo>,</mo><msubsup><mi>y</mi><mi>n</mi><mrow><mo>(</mo><mi>k</mi><mo>)</mo></mrow></msubsup><mo>)</mo></mrow><mo>&Vert;</mo><mo>&lt;</mo><msup><mn>10</mn><mrow><mo>&minus;</mo><mn>10</mn></mrow></msup></mrow></math>.
+        </p>
+
+        <!-- 5.3 DEM -->
+        <h3 style="margin: 28px 0 8px 0; color: var(--accent-cyan);">5.3 3-Tier DEM Elevation Cascade &amp; LRF Datum Calibration</h3>
+        <p>
+          Zenith resolves terrain elevation through an automated 3-tier cascade:
+        </p>
+        <ul style="margin: 12px 0 16px 24px; color: var(--text-secondary); font-size: 0.9rem;">
+          <li><strong>Tier 1 (High-Res Local)</strong>: Custom GeoTIFF/ENVI DEM cropped automatically to the flight bounding box.</li>
+          <li><strong>Tier 2 (Regional Satellite)</strong>: Automated streaming of Copernicus GLO-30 (30m) from AWS Open Data via GDAL virtual file system (<code>/vsicurl/</code>).</li>
+          <li><strong>Tier 3 (Contingency Plane)</strong>: Automatic fallback to flight takeoff datum with Median Absolute Deviation (MAD) outlier filtering.</li>
+        </ul>
+        <div class="math-card">
+          <div class="math-title">Laser Rangefinder (LRF) Datum Calibration</div>
+          <div class="math-formula">
+            <math display="block">
+              <msub><mi>H</mi><mi>i</mi></msub><mo>=</mo><msub><mi>h</mi><mrow><mtext>GNSS</mtext><mo>,</mo><mi>i</mi></mrow></msub><mo>&minus;</mo><mi>N</mi><mo>&minus;</mo><msub><mtext>LRF</mtext><mi>i</mi></msub><mo>&sdot;</mo><mi>cos</mi><mrow><mo>(</mo><msub><mi>&alpha;</mi><mrow><mtext>nadir</mtext><mo>,</mo><mi>i</mi></mrow></msub><mo>)</mo></mrow>
+            </math>
+            <math display="block">
+              <msub><mi>N</mi><mtext>calib</mtext></msub><mo>=</mo><mtext>median</mtext>
+              <mrow><mo>{</mo>
+                <msub><mi>h</mi><mrow><mtext>GNSS</mtext><mo>,</mo><mi>i</mi></mrow></msub><mo>&minus;</mo>
+                <mrow><mo>(</mo><mtext>DEM</mtext><mrow><mo>(</mo><msub><mi>X</mi><mi>i</mi></msub><mo>,</mo><msub><mi>Y</mi><mi>i</mi></msub><mo>)</mo></mrow><mo>+</mo><msub><mtext>LRF</mtext><mi>i</mi></msub><mo>&sdot;</mo><mi>cos</mi><mrow><mo>(</mo><msub><mi>&alpha;</mi><mi>i</mi></msub><mo>)</mo></mrow><mo>)</mo></mrow>
+              <mo>}</mo></mrow>
+            </math>
+          </div>
+          <p style="font-size: 0.84rem; color: var(--text-muted); margin-top: 6px;">
+            Cross-validates onboard Laser Rangefinder measurements against terrain elevations to calibrate out geoidal undulation offsets (<math><mrow><mi>H</mi><mo>=</mo><mi>h</mi><mo>&minus;</mo><mi>N</mi></mrow></math>).
+          </p>
+        </div>
+
+        <!-- 5.4 Visual RGB -->
+        <h3 style="margin: 28px 0 8px 0; color: var(--accent-cyan);">5.4 Visual RGB Engine: Top-3 Softmin Voronoi-Band &amp; Dehaze</h3>
+        <p>
+          For visual RGB orthomosaics, hard Voronoi borders create conspicuous edge seams under varying illumination. Zenith implements a continuous <strong>Top-3 Softmin Voronoi-Band</strong> micro-feathering algorithm:
+        </p>
+        <div class="math-card">
+          <div class="math-title">Top-3 Softmin Distance Weights</div>
+          <div class="math-formula">
+            <math display="block">
+              <msub><mi>w</mi><mi>k</mi></msub><mo>=</mo>
+              <mfrac>
+                <mrow><mi>exp</mi><mrow><mo>(</mo><mo>&minus;</mo><msub><mi>d</mi><mrow><mtext>sensor</mtext><mo>,</mo><mi>k</mi></mrow></msub><mo>/</mo><mi>&sigma;</mi><mo>)</mo></mrow></mrow>
+                <mrow><munderover><mo>&sum;</mo><mrow><mi>j</mi><mo>=</mo><mn>1</mn></mrow><mn>3</mn></munderover><mi>exp</mi><mrow><mo>(</mo><mo>&minus;</mo><msub><mi>d</mi><mrow><mtext>sensor</mtext><mo>,</mo><mi>j</mi></mrow></msub><mo>/</mo><mi>&sigma;</mi><mo>)</mo></mrow></mrow>
+              </mfrac>
+              <mo>,</mo><mspace width="1.5em"/><mi>&sigma;</mi><mo>=</mo><mtext>feather_px</mtext>
+            </math>
+            <math display="block">
+              <msub><mi>I</mi><mtext>ortho</mtext></msub><mrow><mo>(</mo><mi>X</mi><mo>,</mo><mi>Y</mi><mo>)</mo></mrow><mo>=</mo>
+              <munderover><mo>&sum;</mo><mrow><mi>k</mi><mo>=</mo><mn>1</mn></mrow><mn>3</mn></munderover>
+              <msub><mi>w</mi><mi>k</mi></msub><mo>&sdot;</mo>
+              <mrow><mo>[</mo><msub><mi>g</mi><mi>k</mi></msub><mo>&sdot;</mo><msub><mi>I</mi><mi>k</mi></msub><mrow><mo>(</mo><msub><mi>u</mi><mi>k</mi></msub><mo>,</mo><msub><mi>v</mi><mi>k</mi></msub><mo>)</mo></mrow><mo>]</mo></mrow>
+            </math>
+          </div>
+          <p style="font-size: 0.84rem; color: var(--text-muted); margin-top: 6px;">
+            Here <math><msub><mi>g</mi><mi>k</mi></msub></math> is the Brown-Lowe global exposure gain factor computed across adjacent frame overlapping regions, preventing luminance stepping across camera shots.
+          </p>
+        </div>
+
+        <!-- 5.5 Radiometric Thermal -->
+        <h3 style="margin: 28px 0 8px 0; color: var(--accent-cyan);">5.5 Radiometric Thermal Integrity &amp; Hotspot Protection</h3>
+        <div class="math-card" style="border-left-color: var(--accent-amber);">
+          <div class="math-title">Critical Law of Physical Radiometry</div>
+          <p style="font-size: 0.88rem; color: var(--text-secondary); margin-bottom: 8px;">
+            Standard photogrammetric blending averages pixel values across frames. In wildfire operations, averaging a 650&deg;C flame pixel with a 30&deg;C unburned background pixel dilutes the fire front to a false 340&deg;C.
+          </p>
+          <div class="math-formula">
+            <math display="block">
+              <mtext>If&nbsp;</mtext>
+              <mrow><mo>|</mo><msub><mi>T</mi><mi>A</mi></msub><mrow><mo>(</mo><mi>u</mi><mo>,</mo><mi>v</mi><mo>)</mo></mrow><mo>&minus;</mo><msub><mi>T</mi><mi>B</mi></msub><mrow><mo>(</mo><mi>u</mi><mo>,</mo><mi>v</mi><mo>)</mo></mrow><mo>|</mo></mrow>
+              <mo>&gt;</mo><mi>&Delta;</mi><msub><mi>T</mi><mtext>max</mtext></msub><mspace width="0.4em"/><mrow><mo>(</mo><mn>3.5</mn><msup><mi/><mo>&circ;</mo></msup><mtext>C</mtext><mo>)</mo></mrow>
+              <mspace width="0.6em"/><mo>&rArr;</mo><mspace width="0.6em"/>
+              <mtext>Preserve max nadir frame without blending</mtext>
+            </math>
+          </div>
+          <p style="font-size: 0.84rem; color: var(--text-muted); margin-top: 6px;">
+            Nearest-Neighbor sampling is enforced across thermal arrays. Blending is strictly restricted to narrow Voronoi borders (<code>--feather-px 6.0</code>) and automatically bypassed whenever temperature disparity exceeds <code>--max-blend-temp-diff</code> (3.5&deg;C).
+          </p>
+        </div>
+      </section>
+
+      <!-- Section 6: Interoperability Contract & Telemetry -->
+      <section id="contract" class="doc-section">
+        <div class="section-header">
+          <h2 class="section-title">6. Contract &amp; Telemetry</h2>
+          <span class="section-badge">docs/CONTRACT.md</span>
+        </div>
+        <p class="lead">
+          Zenith adheres strictly to the Photogrammetric Engine Contract v1.0, enabling direct integration into RAPTOR and third-party emergency management dashboards.
+        </p>
+
+        <h3 style="margin: 20px 0 10px 0;">Standard Manifest Schema (manifest_level1_rgb.json)</h3>
+        <div class="code-wrapper">
+          <div class="code-header">
+            <span>JSON &bull; EngineManifest v1.0</span>
+            <button class="copy-btn">Copy</button>
+          </div>
+          <pre class="code-content"><code>{
+  "schema_version": "1.0",
+  "engine_name": "Zenith Direct 2.5D Photogrammetry Engine",
+  "engine_version": "1.0.0",
+  "tier": "level1_rapid_ortho",
+  "elapsed_seconds": 128.45,
+  "dem_used": true,
+  "gsd_m": 0.052,
+  "resampling": "bilinear",
+  "products": [
+    "output/rgb_orthomosaic.tif"
+  ],
+  "crs": "EPSG:9377",
+  "datum_vertical_offset_m": 0.0,
+  "frames_total": 84,
+  "frames_nadir_mapped": 82,
+  "frames_transit_filtered": 2,
+  "feather_px": 25.0,
+  "blend_mode": "micro-feather",
+  "dehaze": true,
+  "output_geotiff": "output/rgb_orthomosaic.tif"
+}</code></pre>
+        </div>
+
+        <h3 style="margin: 28px 0 10px 0;">Structured Real-Time Telemetry Protocol</h3>
+        <p>
+          Zenith streams structured real-time progress events over standard output (<code>stdout</code>) for seamless monitoring by downstream daemon wrappers:
+        </p>
+        <div class="code-wrapper">
+          <div class="code-header">
+            <span>Stdout Stream &bull; Telemetry Protocol</span>
+            <button class="copy-btn">Copy</button>
+          </div>
+          <pre class="code-content"><code>[ZENITH_PROGRESS] stage=scanning_telemetry pct=5 detail="Scanning 84 DJI images in /data/flight"
+[ZENITH_PROGRESS] stage=dem_cascade pct=20 detail="Cascading elevation source: local GeoTIFF active"
+[ZENITH_PROGRESS] stage=convex_hull pct=35 detail="Constructing 2D Graham-Scan Convex Hull (78 vertices)"
+[ZENITH_PROGRESS] stage=ortho_rayon pct=65 detail="Processing tile 18/32 [Rayon 16 threads]"
+[ZENITH_PROGRESS] stage=gain_compensation pct=85 detail="Brown-Lowe linear exposure balance converged"
+[ZENITH_PROGRESS] stage=manifest_write pct=95 detail="Emitting canonical EngineManifest v1.0"
+[ZENITH_PROGRESS] stage=complete pct=100 detail="Level 1 RGB Orthomosaic complete in 128.45s"</code></pre>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Footer -->
+  <footer class="doc-footer">
+    <p>Zenith &bull; Ultra-Fast 2.5D Direct Photogrammetry &amp; Radiometric Engine</p>
+    <p style="margin-top: 6px; font-size: 0.8rem; color: var(--text-muted);">
+      Released under the MIT License &bull; Authored by Federico G&oacute;mez &bull; Compatible with RAPTOR Tactical Response
+    </p>
+  </footer>
+
+  <!-- Vanilla JavaScript Interaction -->
+  <script>
+    // 1. Theme Toggle
+    const themeBtn = document.getElementById('theme-toggle');
+    const themeIcon = document.getElementById('theme-icon');
+    const themeLabel = document.getElementById('theme-label');
+
+    function setTheme(isLight) {
+      if (isLight) {
+        document.body.classList.add('light-theme');
+        themeIcon.textContent = '🌙';
+        themeLabel.textContent = 'Dark';
+        localStorage.setItem('zenith_theme', 'light');
+      } else {
+        document.body.classList.remove('light-theme');
+        themeIcon.textContent = '☀️';
+        themeLabel.textContent = 'Light';
+        localStorage.setItem('zenith_theme', 'dark');
+      }
+    }
+
+    const savedTheme = localStorage.getItem('zenith_theme');
+    if (savedTheme === 'light') {
+      setTheme(true);
+    }
+
+    themeBtn.addEventListener('click', () => {
+      const isLight = document.body.classList.contains('light-theme');
+      setTheme(!isLight);
+    });
+
+    // 2. Banner SVG / ASCII Toggle
+    const bannerToggleBtn = document.getElementById('banner-toggle');
+    const svgBanner = document.getElementById('svg-banner');
+    const asciiBanner = document.getElementById('ascii-banner');
+    let asciiLoaded = false;
+
+    bannerToggleBtn.addEventListener('click', () => {
+      if (asciiBanner.style.display === 'block') {
+        asciiBanner.style.display = 'none';
+        svgBanner.style.display = 'block';
+        bannerToggleBtn.textContent = '📟 View ASCII Art';
+      } else {
+        if (!asciiLoaded) {
+          fetch('./assets/logo_ascii.txt')
+            .then(res => res.text())
+            .then(text => {
+              asciiBanner.textContent = text;
+              asciiLoaded = true;
+            })
+            .catch(() => {
+              asciiBanner.textContent = "Zenith v1.0.0 (Pure Rust Direct 2.5D Photogrammetry)";
+            });
+        }
+        svgBanner.style.display = 'none';
+        asciiBanner.style.display = 'block';
+        bannerToggleBtn.textContent = '🎨 View SVG Banner';
+      }
+    });
+
+    // 3. Tab Navigation
+    document.querySelectorAll('.tab-container').forEach(container => {
+      const buttons = container.querySelectorAll('.tab-btn');
+      const panes = container.querySelectorAll('.tab-pane');
+
+      buttons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          buttons.forEach(b => b.classList.remove('active'));
+          panes.forEach(p => p.classList.remove('active'));
+
+          btn.classList.add('active');
+          const targetId = btn.getAttribute('data-tab');
+          const targetPane = container.querySelector('#' + targetId);
+          if (targetPane) targetPane.classList.add('active');
+        });
+      });
+    });
+
+    // 4. Copy-to-Clipboard
+    document.querySelectorAll('.copy-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const wrapper = btn.closest('.code-wrapper');
+        const codeElem = wrapper ? wrapper.querySelector('pre.code-content code, pre.code-content') : null;
+        if (!codeElem) return;
+
+        const text = codeElem.innerText;
+        navigator.clipboard.writeText(text).then(() => {
+          const original = btn.textContent;
+          btn.textContent = 'Copied!';
+          btn.style.borderColor = 'var(--accent-emerald)';
+          btn.style.color = 'var(--accent-emerald)';
+          setTimeout(() => {
+            btn.textContent = original;
+            btn.style.borderColor = '';
+            btn.style.color = '';
+          }, 2000);
+        });
+      });
+    });
+
+    // 5. Interactive CLI Flag Search & Filter
+    const cliSearchInput = document.getElementById('cli-filter-input');
+    const cliPills = document.querySelectorAll('.cli-pill');
+    const cliCards = document.querySelectorAll('.cli-card');
+
+    let currentCmdFilter = 'all';
+
+    function filterCliFlags() {
+      const query = cliSearchInput.value.toLowerCase().trim();
+
+      cliCards.forEach(card => {
+        const cardCmd = card.getAttribute('data-cmd');
+        const matchesCmd = (currentCmdFilter === 'all' || currentCmdFilter === cardCmd);
+
+        if (!matchesCmd) {
+          card.style.display = 'none';
+          return;
+        }
+
+        const rows = card.querySelectorAll('tbody tr');
+        let visibleRows = 0;
+
+        rows.forEach(row => {
+          const keywords = (row.getAttribute('data-keywords') || '').toLowerCase();
+          const text = row.innerText.toLowerCase();
+          const matchesQuery = !query || keywords.includes(query) || text.includes(query);
+
+          if (matchesQuery) {
+            row.style.display = '';
+            visibleRows++;
+          } else {
+            row.style.display = 'none';
+          }
+        });
+
+        if (visibleRows > 0 || !query) {
+          card.style.display = '';
+        } else {
+          card.style.display = 'none';
+        }
+      });
+    }
+
+    if (cliSearchInput) {
+      cliSearchInput.addEventListener('input', filterCliFlags);
+    }
+
+    cliPills.forEach(pill => {
+      pill.addEventListener('click', () => {
+        cliPills.forEach(p => p.classList.remove('active'));
+        pill.classList.add('active');
+        currentCmdFilter = pill.getAttribute('data-cmd');
+        filterCliFlags();
+      });
+    });
+
+    // 6. Sidebar Filter
+    const sidebarFilter = document.getElementById('sidebar-filter');
+    if (sidebarFilter) {
+      sidebarFilter.addEventListener('input', (e) => {
+        const q = e.target.value.toLowerCase().trim();
+        document.querySelectorAll('.sidebar .nav-item').forEach(item => {
+          const text = item.innerText.toLowerCase();
+          item.style.display = (!q || text.includes(q)) ? '' : 'none';
+        });
+      });
+    }
+
+    // 7. Active ScrollSpy for Sidebar
+    const sections = document.querySelectorAll('section.doc-section');
+    const navLinks = document.querySelectorAll('aside.sidebar .nav-link');
+
+    window.addEventListener('scroll', () => {
+      let current = '';
+      sections.forEach(sec => {
+        const secTop = sec.offsetTop - 100;
+        if (window.scrollY >= secTop) {
+          current = sec.getAttribute('id');
+        }
+      });
+
+      navLinks.forEach(link => {
+        link.classList.remove('active');
+        if (link.getAttribute('href') === '#' + current) {
+          link.classList.add('active');
+        }
+      });
+    });
+  </script>
+</body>
+</html>

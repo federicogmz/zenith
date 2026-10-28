@@ -1,8 +1,53 @@
-# Zenith: Ultra-Fast 2.5D Photogrammetry & Orthorectification Engine (v1.0.0)
+<p align="center">
+  <img src="docs/assets/logo.svg" alt="Zenith Logo" width="100%"/>
+</p>
 
-[![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.0-green.svg)](Cargo.toml)
+<p align="center">
+  <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-1.80%2B-orange.svg" alt="Rust 1.80+"/></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"/></a>
+  <a href="Cargo.toml"><img src="https://img.shields.io/badge/version-1.0.0-green.svg" alt="Version 1.0.0"/></a>
+  <a href="https://federicogmz.github.io/zenith/"><img src="https://img.shields.io/badge/docs-interactive%20portal-cyan.svg" alt="Documentation Portal"/></a>
+  <a href="docs/CONTRACT.md"><img src="https://img.shields.io/badge/contract-RAPTOR%20v1.0-emerald.svg" alt="RAPTOR Contract Compliant"/></a>
+</p>
+
+<p align="center">
+  <strong><a href="https://federicogmz.github.io/zenith/">📖 Interactive Documentation Portal</a></strong> &bull;
+  <strong><a href="https://federicogmz.github.io/zenith/">🌐 GitHub Pages Deployment</a></strong> &bull;
+  <strong><a href="docs/CONTRACT.md">📑 Photogrammetric Contract</a></strong>
+</p>
+
+<details>
+<summary>📟 <strong>Terminal ASCII Banner (Click to expand)</strong></summary>
+
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│  ███████╗███████╗███╗   ██╗██╗████████╗██╗  ██╗   ZENITH PHOTOGRAMMETRY│
+│  ╚══███╔╝██╔════╝████╗  ██║██║╚══██╔══╝██║  ██║   v1.0.0 (Pure Rust)   │
+│    ███╔╝ █████╗  ██╔██╗ ██║██║   ██║   ███████║   Tactical 2.5D Engine │
+│   ███╔╝  ██╔══╝  ██║╚██╗██║██║   ██║   ██╔══██║   < 2 min Thermal L0   │
+│  ███████╗███████╗██║ ╚████║██║   ██║   ██║  ██║   < 3 min Direct Ortho │
+│  ╚══════╝╚══════╝╚═╝  ╚═══╝╚═╝   ╚═╝   ╚═╝  ╚═╝   Multi-CRS EPSG:9377  │
+├────────────────────────────────────────────────────────────────────────┤
+│  OVERLAPPING SENSOR FOOTPRINTS & VORONOI SEAMLINE GEOMETRY:            │
+│                                                                        │
+│        ┌────── FRAME A (Cyan) ──────┐                                  │
+│        │  . . . . . . . ┌───────────┴──────────┐                       │
+│        │  . . . . . . . │ ░░░░░░░░░ ╲  ▒▒▒▒▒▒▒ │  FRAME B (Amber)      │
+│        │  . . . . . . . │ ░░░░░░░░░  ╲ ▒▒▒▒▒▒▒ │                       │
+│        └────────────────┤ ░░░░░░░░░   ╲▒▒▒▒▒▒▒ │                       │
+│                         └───────────┬──────────┘                       │
+│                                     ▲ Voronoi Cut Line                 │
+│                                [A∩B] OVERLAP BAND                      │
+│                                                                        │
+│  • Brown-Conrady Dewarping • Rayon Data Parallelism   • LRF Vertical Datum│
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+</details>
+
+---
+
+# Zenith: Ultra-Fast 2.5D Photogrammetry & Orthorectification Engine (v1.0.0)
 
 **Zenith** is a high-performance, open-source photogrammetry engine built in pure Rust. It is engineered specifically for **time-critical aerial operations**—such as wildfire suppression, disaster response, and tactical search & rescue (SAR)—where standard Structure-from-Motion (SfM) pipelines are too slow.
 
