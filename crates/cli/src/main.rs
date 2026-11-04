@@ -2,7 +2,7 @@
 //! Diseñado para operaciones tácticas de respuesta a emergencias e incendios forestales.
 
 use clap::{Parser, Subcommand, ValueEnum};
-use log::info;
+use log::{info, warn};
 use std::path::PathBuf;
 use std::time::Instant;
 use zenith_core::{
@@ -11,8 +11,8 @@ use zenith_core::{
 use zenith_dem::DemWindow;
 use zenith_io::{parse_geo_txt, scan_flight_directory, DjiMetadata, EngineManifest};
 use zenith_ortho::{
-    DirectOrthoEngine, ImageFrame, OrthoConfig, ResamplingMethod, RgbBlendMode, RgbFrameMeta,
-    RgbOrthoConfig, RgbOrthoEngine, TrimMode,
+    refine_poses_with_tie_points, DirectOrthoEngine, ImageFrame, OrthoConfig, ResamplingMethod,
+    RgbBlendMode, RgbFrameMeta, RgbOrthoConfig, RgbOrthoEngine, TiePointFile, TrimMode,
 };
 
 /// Política de resolución de fuente de elevación en Zenith 2.5D
@@ -202,6 +202,14 @@ enum Commands {
         /// Sistema de Referencia de Coordenadas (CRS) proyectado: "EPSG:9377", "EPSG:32618", "auto", "utm"
         #[arg(long, alias = "epsg", default_value = "EPSG:9377")]
         crs: String,
+
+        /// Ruta al archivo JSON con puntos de enlace (tie points) o pose overrides de FlexGlue
+        #[arg(long)]
+        tie_points: Option<PathBuf>,
+
+        /// Ruta opcional para exportar el reporte de poses refinadas a JSON
+        #[arg(long)]
+        export_refined_poses: Option<PathBuf>,
     },
 
     /// Genera un ortomosaico visual RGB directo 2.5D con corrección de costuras (feathering)
@@ -293,6 +301,14 @@ enum Commands {
         /// Sistema de Referencia de Coordenadas (CRS) proyectado: "EPSG:9377", "EPSG:32618", "auto", "utm"
         #[arg(long, alias = "epsg", default_value = "EPSG:9377")]
         crs: String,
+
+        /// Ruta al archivo JSON con puntos de enlace (tie points) o pose overrides de FlexGlue
+        #[arg(long)]
+        tie_points: Option<PathBuf>,
+
+        /// Ruta opcional para exportar el reporte de poses refinadas a JSON
+        #[arg(long)]
+        export_refined_poses: Option<PathBuf>,
     },
 
     /// Ejecuta un benchmark sintético multihilo (Rayon) de proyección 2.5D
@@ -1191,6 +1207,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             feather_px,
             max_blend_temp_diff,
             crs,
+            tie_points,
+            export_refined_poses,
         } => {
             let t0 = Instant::now();
             info!("Iniciando ortorrectificación térmica 2.5D con Zenith...");
@@ -1475,6 +1493,114 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 missing_raw
             );
 
+            if let Some(ref tp_path) = tie_points {
+                match std::fs::read_to_string(tp_path) {
+                    Ok(tp_json) => match serde_json::from_str::<TiePointFile>(&tp_json) {
+                        Ok(tie_file) => {
+                            info!(
+                                "Ejecutando refinamiento de poses 2.5D con {} puntos de enlace y {} overrides...",
+                                tie_file.matches.len(),
+                                tie_file.pose_overrides.len()
+                            );
+                            let report =
+                                refine_poses_with_tie_points(&mut image_frames, &dem, &tie_file);
+                            println!(
+                                "[ZENITH_POSE_REFINEMENT] pre_rmse_m={:.4} post_rmse_m={:.4} holdout_pre_rmse_m={:.4} holdout_post_rmse_m={:.4} inlier_ratio={:.4}",
+                                report.pre_refinement_rmse_m,
+                                report.post_refinement_rmse_m,
+                                report.holdout_pre_rmse_m,
+                                report.holdout_post_rmse_m,
+                                report.inlier_ratio
+                            );
+                            if let Some(ref export_path) = export_refined_poses {
+                                let export_payload = serde_json::json!({
+                                    "schema_version": "1.0",
+                                    "model": "2.5D_horizontal_yaw",
+                                    "report": &report,
+                                    "pose_overrides": &report.applied_deltas,
+                                });
+                                if let Some(parent) = export_path.parent() {
+                                    std::fs::create_dir_all(parent).ok();
+                                }
+                                std::fs::write(
+                                    export_path,
+                                    serde_json::to_string_pretty(&export_payload)?,
+                                )?;
+                                info!(
+                                    "Poses refinadas exportadas exitosamente a: {}",
+                                    export_path.display()
+                                );
+                            }
+
+                            // Actualizar puntos del casco convexo con las poses refinadas
+                            if !hull_points.is_empty() {
+                                hull_points.clear();
+                                for frame in &image_frames {
+                                    let w_px = frame.intrinsics.width as f64;
+                                    let h_px = frame.intrinsics.height as f64;
+                                    let f_half_w = w_px * 0.5;
+                                    let f_half_h = h_px * 0.5;
+                                    let f_u_min = frame.intrinsics.cx - f_half_w * center_crop;
+                                    let f_u_max = frame.intrinsics.cx + f_half_w * center_crop;
+                                    let f_v_min = frame.intrinsics.cy - f_half_h * center_crop;
+                                    let f_v_max = frame.intrinsics.cy + f_half_h * center_crop;
+                                    let hc1 = frame.basis.pixel_to_ray(
+                                        f_u_min,
+                                        f_v_min,
+                                        frame.pose.position,
+                                        &frame.intrinsics,
+                                    );
+                                    let hc2 = frame.basis.pixel_to_ray(
+                                        f_u_max,
+                                        f_v_min,
+                                        frame.pose.position,
+                                        &frame.intrinsics,
+                                    );
+                                    let hc3 = frame.basis.pixel_to_ray(
+                                        f_u_max,
+                                        f_v_max,
+                                        frame.pose.position,
+                                        &frame.intrinsics,
+                                    );
+                                    let hc4 = frame.basis.pixel_to_ray(
+                                        f_u_min,
+                                        f_v_max,
+                                        frame.pose.position,
+                                        &frame.intrinsics,
+                                    );
+                                    if let Some(hp) = dem.intersect_ray(&hc1, 3000.0, 16) {
+                                        hull_points.push(Point2D::new(hp.x, hp.y));
+                                    }
+                                    if let Some(hp) = dem.intersect_ray(&hc2, 3000.0, 16) {
+                                        hull_points.push(Point2D::new(hp.x, hp.y));
+                                    }
+                                    if let Some(hp) = dem.intersect_ray(&hc3, 3000.0, 16) {
+                                        hull_points.push(Point2D::new(hp.x, hp.y));
+                                    }
+                                    if let Some(hp) = dem.intersect_ray(&hc4, 3000.0, 16) {
+                                        hull_points.push(Point2D::new(hp.x, hp.y));
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            warn!(
+                                "Error deserializando archivo de tie points {}: {}",
+                                tp_path.display(),
+                                e
+                            );
+                        }
+                    },
+                    Err(e) => {
+                        warn!(
+                            "Error leyendo archivo de tie points {}: {}",
+                            tp_path.display(),
+                            e
+                        );
+                    }
+                }
+            }
+
             let hull = if hull_points.len() >= 3 {
                 let h = ConvexHull2D::from_points(&hull_points);
                 if let Some(ref h_obj) = h {
@@ -1682,6 +1808,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             hull_geojson,
             manifest,
             crs,
+            tie_points,
+            export_refined_poses,
         } => {
             let t0 = Instant::now();
             info!("Iniciando ortorrectificación visual RGB 2.5D con Zenith...");
@@ -1912,6 +2040,114 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 rgb_frames.len(),
                 ignored_transit
             );
+
+            if let Some(ref tp_path) = tie_points {
+                match std::fs::read_to_string(tp_path) {
+                    Ok(tp_json) => match serde_json::from_str::<TiePointFile>(&tp_json) {
+                        Ok(tie_file) => {
+                            info!(
+                                "Ejecutando refinamiento de poses 2.5D con {} puntos de enlace y {} overrides...",
+                                tie_file.matches.len(),
+                                tie_file.pose_overrides.len()
+                            );
+                            let report =
+                                refine_poses_with_tie_points(&mut rgb_frames, &dem, &tie_file);
+                            println!(
+                                "[ZENITH_POSE_REFINEMENT] pre_rmse_m={:.4} post_rmse_m={:.4} holdout_pre_rmse_m={:.4} holdout_post_rmse_m={:.4} inlier_ratio={:.4}",
+                                report.pre_refinement_rmse_m,
+                                report.post_refinement_rmse_m,
+                                report.holdout_pre_rmse_m,
+                                report.holdout_post_rmse_m,
+                                report.inlier_ratio
+                            );
+                            if let Some(ref export_path) = export_refined_poses {
+                                let export_payload = serde_json::json!({
+                                    "schema_version": "1.0",
+                                    "model": "2.5D_horizontal_yaw",
+                                    "report": &report,
+                                    "pose_overrides": &report.applied_deltas,
+                                });
+                                if let Some(parent) = export_path.parent() {
+                                    std::fs::create_dir_all(parent).ok();
+                                }
+                                std::fs::write(
+                                    export_path,
+                                    serde_json::to_string_pretty(&export_payload)?,
+                                )?;
+                                info!(
+                                    "Poses refinadas exportadas exitosamente a: {}",
+                                    export_path.display()
+                                );
+                            }
+
+                            // Actualizar puntos del casco convexo con las poses refinadas
+                            if !hull_points.is_empty() {
+                                hull_points.clear();
+                                for frame in &rgb_frames {
+                                    let w_px = frame.intrinsics.width as f64;
+                                    let h_px = frame.intrinsics.height as f64;
+                                    let f_half_w = w_px * 0.5;
+                                    let f_half_h = h_px * 0.5;
+                                    let f_u_min = frame.intrinsics.cx - f_half_w * center_crop;
+                                    let f_u_max = frame.intrinsics.cx + f_half_w * center_crop;
+                                    let f_v_min = frame.intrinsics.cy - f_half_h * center_crop;
+                                    let f_v_max = frame.intrinsics.cy + f_half_h * center_crop;
+                                    let hc1 = frame.basis.pixel_to_ray(
+                                        f_u_min,
+                                        f_v_min,
+                                        frame.pose.position,
+                                        &frame.intrinsics,
+                                    );
+                                    let hc2 = frame.basis.pixel_to_ray(
+                                        f_u_max,
+                                        f_v_min,
+                                        frame.pose.position,
+                                        &frame.intrinsics,
+                                    );
+                                    let hc3 = frame.basis.pixel_to_ray(
+                                        f_u_max,
+                                        f_v_max,
+                                        frame.pose.position,
+                                        &frame.intrinsics,
+                                    );
+                                    let hc4 = frame.basis.pixel_to_ray(
+                                        f_u_min,
+                                        f_v_max,
+                                        frame.pose.position,
+                                        &frame.intrinsics,
+                                    );
+                                    if let Some(hp) = dem.intersect_ray(&hc1, 3000.0, 16) {
+                                        hull_points.push(Point2D::new(hp.x, hp.y));
+                                    }
+                                    if let Some(hp) = dem.intersect_ray(&hc2, 3000.0, 16) {
+                                        hull_points.push(Point2D::new(hp.x, hp.y));
+                                    }
+                                    if let Some(hp) = dem.intersect_ray(&hc3, 3000.0, 16) {
+                                        hull_points.push(Point2D::new(hp.x, hp.y));
+                                    }
+                                    if let Some(hp) = dem.intersect_ray(&hc4, 3000.0, 16) {
+                                        hull_points.push(Point2D::new(hp.x, hp.y));
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            warn!(
+                                "Error deserializando archivo de tie points {}: {}",
+                                tp_path.display(),
+                                e
+                            );
+                        }
+                    },
+                    Err(e) => {
+                        warn!(
+                            "Error leyendo archivo de tie points {}: {}",
+                            tp_path.display(),
+                            e
+                        );
+                    }
+                }
+            }
 
             let hull = if hull_points.len() >= 3 {
                 let h = ConvexHull2D::from_points(&hull_points);

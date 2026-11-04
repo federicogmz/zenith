@@ -253,6 +253,7 @@ pub struct DirectOrthoEngine;
 
 impl DirectOrthoEngine {
     /// Genera un ortomosaico proyectando las celdas de terreno sobre los fotogramas.
+    #[allow(clippy::type_complexity)]
     pub fn generate_orthomosaic(
         frames: &[ImageFrame],
         dem: &DemWindow,
@@ -2508,6 +2509,1044 @@ impl RgbOrthoEngine {
     }
 }
 
+// =========================================================================
+// 2.5D POSE REFINEMENT SOLVER & DATA STRUCTURES (FLEXGLUE INTEGRATION)
+// =========================================================================
+
+fn default_score() -> f64 {
+    1.0
+}
+
+/// Coincidencia de punto de enlace (tie point) 2D-2D entre dos fotogramas.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TiePointMatch {
+    pub frame_i: String,
+    pub frame_j: String,
+    pub u_i: f64,
+    pub v_i: f64,
+    pub u_j: f64,
+    pub v_j: f64,
+    #[serde(default = "default_score")]
+    pub score: f64,
+    #[serde(default = "default_score")]
+    pub covisibility: f64,
+}
+
+/// Desplazamiento de pose rígida en el plano ENU horizontal y yaw.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FramePoseDelta {
+    pub frame_id: String,
+    pub delta_x_m: f64,
+    pub delta_y_m: f64,
+    pub delta_yaw_deg: f64,
+}
+
+/// Archivo de entrada de puntos de enlace y/o correcciones de pose a priori.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TiePointFile {
+    #[serde(default)]
+    pub schema_version: String,
+    #[serde(default)]
+    pub matcher: String,
+    #[serde(default)]
+    pub coordinate_convention: String,
+    #[serde(default)]
+    pub matches: Vec<TiePointMatch>,
+    #[serde(default)]
+    pub pose_overrides: Vec<FramePoseDelta>,
+}
+
+/// Reporte cuantitativo de la optimización de poses 2.5D.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PoseRefinementReport {
+    pub matcher: String,
+    pub total_matches: usize,
+    pub valid_dem_intersections: usize,
+    pub train_matches: usize,
+    pub holdout_matches: usize,
+    pub iterations: usize,
+    pub global_along_track_m: f64,
+    pub global_cross_track_m: f64,
+    pub pre_refinement_rmse_m: f64,
+    pub post_refinement_rmse_m: f64,
+    pub holdout_pre_rmse_m: f64,
+    pub holdout_post_rmse_m: f64,
+    pub inlier_ratio: f64,
+    pub saturated_frames_pct: f64,
+    pub applied_deltas: Vec<FramePoseDelta>,
+}
+
+/// Hiperparámetros de regularización y límites del solver 2.5D.
+#[derive(Debug, Clone, Copy)]
+pub struct PoseRefinementConfig {
+    pub lambda_t: f64,
+    pub lambda_psi: f64,
+    pub clamp_shift_m: f64,
+    pub clamp_yaw_deg: f64,
+    pub max_residual_m: f64,
+    pub huber_threshold_m: f64,
+    pub outer_iterations: usize,
+    pub inner_steps: usize,
+    pub damping: f64,
+}
+
+impl Default for PoseRefinementConfig {
+    fn default() -> Self {
+        Self {
+            lambda_t: 2.5,
+            lambda_psi: 10.0,
+            clamp_shift_m: 4.0,
+            clamp_yaw_deg: 2.5,
+            max_residual_m: 15.0,
+            huber_threshold_m: 1.5,
+            outer_iterations: 3,
+            inner_steps: 15,
+            damping: 0.6,
+        }
+    }
+}
+
+/// Trait genérico para fotogramas fotogramétricos refinables (RGB o Térmico).
+pub trait RefinableFrame {
+    fn id(&self) -> &str;
+    fn pose(&self) -> &CameraPose;
+    fn pose_mut(&mut self) -> &mut CameraPose;
+    fn intrinsics(&self) -> &CameraIntrinsics;
+    fn basis(&self) -> &CameraBasis;
+    fn set_basis(&mut self, basis: CameraBasis);
+    fn bbox(&self) -> [f64; 4];
+    fn set_bbox(&mut self, bbox: [f64; 4]);
+    fn image_size(&self) -> (f64, f64);
+
+    /// Actualiza la base ortonormal y el bounding box proyectado sobre el DEM.
+    fn update_basis_and_bbox(&mut self, dem: &DemWindow) {
+        let pose = self.pose();
+        let basis = CameraBasis::from_gimbal(pose.yaw_deg, pose.pitch_deg, pose.roll_deg);
+        self.set_basis(basis);
+        let cam_pos = self.pose().position;
+        let intrinsics = *self.intrinsics();
+        let (w, h) = self.image_size();
+        let c1 = basis.pixel_to_ray(0.0, 0.0, cam_pos, &intrinsics);
+        let c2 = basis.pixel_to_ray(w, 0.0, cam_pos, &intrinsics);
+        let c3 = basis.pixel_to_ray(w, h, cam_pos, &intrinsics);
+        let c4 = basis.pixel_to_ray(0.0, h, cam_pos, &intrinsics);
+
+        let p1 = dem.intersect_ray(&c1, 8000.0, 16);
+        let p2 = dem.intersect_ray(&c2, 8000.0, 16);
+        let p3 = dem.intersect_ray(&c3, 8000.0, 16);
+        let p4 = dem.intersect_ray(&c4, 8000.0, 16);
+
+        let new_bbox = if let (Some(pt1), Some(pt2), Some(pt3), Some(pt4)) = (p1, p2, p3, p4) {
+            let pts = [pt1, pt2, pt3, pt4];
+            let min_x = pts.iter().map(|p| p.x).fold(f64::INFINITY, f64::min) - 10.0;
+            let max_x = pts.iter().map(|p| p.x).fold(f64::NEG_INFINITY, f64::max) + 10.0;
+            let min_y = pts.iter().map(|p| p.y).fold(f64::INFINITY, f64::min) - 10.0;
+            let max_y = pts.iter().map(|p| p.y).fold(f64::NEG_INFINITY, f64::max) + 10.0;
+            [min_x, min_y, max_x, max_y]
+        } else {
+            let cur = self.bbox();
+            if cur[0].is_finite() {
+                cur
+            } else {
+                [
+                    cam_pos.x - 300.0,
+                    cam_pos.y - 300.0,
+                    cam_pos.x + 300.0,
+                    cam_pos.y + 300.0,
+                ]
+            }
+        };
+        self.set_bbox(new_bbox);
+    }
+}
+
+impl RefinableFrame for ImageFrame {
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn pose(&self) -> &CameraPose {
+        &self.pose
+    }
+    fn pose_mut(&mut self) -> &mut CameraPose {
+        &mut self.pose
+    }
+    fn intrinsics(&self) -> &CameraIntrinsics {
+        &self.intrinsics
+    }
+    fn basis(&self) -> &CameraBasis {
+        &self.basis
+    }
+    fn set_basis(&mut self, basis: CameraBasis) {
+        self.basis = basis;
+    }
+    fn bbox(&self) -> [f64; 4] {
+        self.bbox
+    }
+    fn set_bbox(&mut self, bbox: [f64; 4]) {
+        self.bbox = bbox;
+    }
+    fn image_size(&self) -> (f64, f64) {
+        (self.width as f64, self.height as f64)
+    }
+}
+
+impl RefinableFrame for RgbFrameMeta {
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn pose(&self) -> &CameraPose {
+        &self.pose
+    }
+    fn pose_mut(&mut self) -> &mut CameraPose {
+        &mut self.pose
+    }
+    fn intrinsics(&self) -> &CameraIntrinsics {
+        &self.intrinsics
+    }
+    fn basis(&self) -> &CameraBasis {
+        &self.basis
+    }
+    fn set_basis(&mut self, basis: CameraBasis) {
+        self.basis = basis;
+    }
+    fn bbox(&self) -> [f64; 4] {
+        self.bbox
+    }
+    fn set_bbox(&mut self, bbox: [f64; 4]) {
+        self.bbox = bbox;
+    }
+    fn image_size(&self) -> (f64, f64) {
+        (self.intrinsics.width as f64, self.intrinsics.height as f64)
+    }
+}
+
+/// Extrae número secuencial DJI de 4 dígitos (p. ej. `_0042_` o `_0042`).
+fn extract_dji_number(s: &str) -> Option<u32> {
+    let bytes = s.as_bytes();
+    for i in 0..bytes.len() {
+        if i + 5 < bytes.len() && bytes[i] == b'_' && bytes[i + 5] == b'_' {
+            let slice = &bytes[i + 1..i + 5];
+            if slice.iter().all(|b| b.is_ascii_digit()) {
+                if let Ok(num) = std::str::from_utf8(slice).unwrap_or("").parse::<u32>() {
+                    return Some(num);
+                }
+            }
+        }
+    }
+    for i in 0..bytes.len() {
+        if bytes[i] == b'_' && i + 4 < bytes.len() {
+            let slice = &bytes[i + 1..i + 5];
+            if slice.iter().all(|b| b.is_ascii_digit())
+                && (i + 5 == bytes.len() || !bytes[i + 5].is_ascii_digit())
+            {
+                if let Ok(num) = std::str::from_utf8(slice).unwrap_or("").parse::<u32>() {
+                    return Some(num);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Localiza el índice de un fotograma de manera no ambigua.
+/// Prioridad estricta: ID exacto > Nombre base (stem) > Secuencia DJI.
+fn find_frame_index<F: RefinableFrame>(frames: &[F], target_id: &str) -> Option<usize> {
+    // 1. ID exacto
+    if let Some(idx) = frames.iter().position(|f| f.id() == target_id) {
+        return Some(idx);
+    }
+
+    // 2. Coincidencia por stem de archivo
+    let target_stem = std::path::Path::new(target_id)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(target_id);
+
+    let stem_matches: Vec<usize> = frames
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, f)| {
+            let f_stem = std::path::Path::new(f.id())
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or(f.id());
+            if f_stem == target_stem {
+                Some(idx)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if stem_matches.len() == 1 {
+        return Some(stem_matches[0]);
+    }
+
+    // 3. Coincidencia por secuencia DJI de 4 dígitos
+    if let Some(target_num) = extract_dji_number(target_id) {
+        let seq_matches: Vec<usize> = frames
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, f)| {
+                if let Some(f_num) = extract_dji_number(f.id()) {
+                    if f_num == target_num {
+                        return Some(idx);
+                    }
+                }
+                None
+            })
+            .collect();
+        if seq_matches.len() == 1 {
+            return Some(seq_matches[0]);
+        }
+    }
+
+    None
+}
+
+struct InternalMatch {
+    frame_i: usize,
+    frame_j: usize,
+    u_i: f64,
+    v_i: f64,
+    u_j: f64,
+    v_j: f64,
+    score: f64,
+    is_train: bool,
+}
+
+struct MatchEval {
+    valid: bool,
+    pt_i: Vector3,
+    pt_j: Vector3,
+    dx: f64,
+    dy: f64,
+    dist: f64,
+    weight: f64,
+    is_inlier: bool,
+}
+
+fn compute_ground_point<F: RefinableFrame>(
+    frame: &F,
+    u: f64,
+    v: f64,
+    dem: &DemWindow,
+) -> Option<Vector3> {
+    let basis = frame.basis();
+    let intrinsics = frame.intrinsics();
+    let cam_pos = frame.pose().position;
+    // Convención estándar: restar 0.5 px hacia centro óptico
+    let ray = basis.pixel_to_ray(u - 0.5, v - 0.5, cam_pos, intrinsics);
+    dem.intersect_ray(&ray, 8000.0, 16)
+}
+
+fn eval_match<F: RefinableFrame>(
+    m: &InternalMatch,
+    frames: &[F],
+    dem: &DemWindow,
+    max_residual_m: f64,
+    huber_threshold_m: f64,
+) -> MatchEval {
+    let g_i = compute_ground_point(&frames[m.frame_i], m.u_i, m.v_i, dem);
+    let g_j = compute_ground_point(&frames[m.frame_j], m.u_j, m.v_j, dem);
+    if let (Some(pi), Some(pj)) = (g_i, g_j) {
+        let dx = pj.x - pi.x;
+        let dy = pj.y - pi.y;
+        let dist = dx.hypot(dy);
+        let is_inlier = dist <= max_residual_m;
+        let w_huber = if dist <= huber_threshold_m {
+            1.0
+        } else if is_inlier {
+            huber_threshold_m / dist
+        } else {
+            0.0
+        };
+        let weight = w_huber * m.score;
+        MatchEval {
+            valid: true,
+            pt_i: pi,
+            pt_j: pj,
+            dx,
+            dy,
+            dist,
+            weight,
+            is_inlier,
+        }
+    } else {
+        MatchEval {
+            valid: false,
+            pt_i: Vector3::new(0.0, 0.0, 0.0),
+            pt_j: Vector3::new(0.0, 0.0, 0.0),
+            dx: 0.0,
+            dy: 0.0,
+            dist: 0.0,
+            weight: 0.0,
+            is_inlier: false,
+        }
+    }
+}
+
+fn find_root(p: &mut [usize], mut i: usize) -> usize {
+    while p[i] != i {
+        p[i] = p[p[i]];
+        i = p[i];
+    }
+    i
+}
+
+fn union_sets(p: &mut [usize], i: usize, j: usize) {
+    let ri = find_root(p, i);
+    let rj = find_root(p, j);
+    if ri != rj {
+        p[ri] = rj;
+    }
+}
+
+/// Refina poses usando configuración por defecto.
+pub fn refine_poses_with_tie_points<F: RefinableFrame>(
+    frames: &mut [F],
+    dem: &DemWindow,
+    tie_file: &TiePointFile,
+) -> PoseRefinementReport {
+    refine_poses_with_tie_points_config(frames, dem, tie_file, &PoseRefinementConfig::default())
+}
+
+/// Ejecuta el solver 2.5D de refinamiento de poses fotogramétricas.
+#[allow(non_snake_case)]
+pub fn refine_poses_with_tie_points_config<F: RefinableFrame>(
+    frames: &mut [F],
+    dem: &DemWindow,
+    tie_file: &TiePointFile,
+    config: &PoseRefinementConfig,
+) -> PoseRefinementReport {
+    let n_frames = frames.len();
+    if n_frames == 0 {
+        return PoseRefinementReport {
+            matcher: tie_file.matcher.clone(),
+            ..Default::default()
+        };
+    }
+
+    // Registrar poses originales previas a cualquier mutación
+    let orig_poses: Vec<(f64, f64, f64)> = frames
+        .iter()
+        .map(|f| (f.pose().position.x, f.pose().position.y, f.pose().yaw_deg))
+        .collect();
+
+    // Paso A: Aplicar pose overrides si están presentes
+    if !tie_file.pose_overrides.is_empty() {
+        for ovr in &tie_file.pose_overrides {
+            if let Some(idx) = find_frame_index(frames, &ovr.frame_id) {
+                let dx = ovr
+                    .delta_x_m
+                    .clamp(-config.clamp_shift_m, config.clamp_shift_m);
+                let dy = ovr
+                    .delta_y_m
+                    .clamp(-config.clamp_shift_m, config.clamp_shift_m);
+                let dyaw = ovr
+                    .delta_yaw_deg
+                    .clamp(-config.clamp_yaw_deg, config.clamp_yaw_deg);
+                {
+                    let p = frames[idx].pose_mut();
+                    p.position.x += dx;
+                    p.position.y += dy;
+                    p.yaw_deg += dyaw;
+                }
+                frames[idx].update_basis_and_bbox(dem);
+            }
+        }
+    }
+
+    // Si no hay matches, concluir con las poses a priori aplicadas
+    if tie_file.matches.is_empty() {
+        let applied_deltas = frames
+            .iter()
+            .enumerate()
+            .map(|(i, f)| FramePoseDelta {
+                frame_id: f.id().to_string(),
+                delta_x_m: f.pose().position.x - orig_poses[i].0,
+                delta_y_m: f.pose().position.y - orig_poses[i].1,
+                delta_yaw_deg: f.pose().yaw_deg - orig_poses[i].2,
+            })
+            .collect();
+
+        return PoseRefinementReport {
+            matcher: tie_file.matcher.clone(),
+            applied_deltas,
+            ..Default::default()
+        };
+    }
+
+    // Paso B: Mapear matches a índices de fotograma
+    let mut mapped_matches = Vec::new();
+    let total_matches = tie_file.matches.len();
+
+    for m in &tie_file.matches {
+        if let (Some(idx_i), Some(idx_j)) = (
+            find_frame_index(frames, &m.frame_i),
+            find_frame_index(frames, &m.frame_j),
+        ) {
+            if idx_i != idx_j {
+                let match_idx = mapped_matches.len();
+                let is_train = match_idx % 5 != 0;
+                mapped_matches.push(InternalMatch {
+                    frame_i: idx_i,
+                    frame_j: idx_j,
+                    u_i: m.u_i,
+                    v_i: m.v_i,
+                    u_j: m.u_j,
+                    v_j: m.v_j,
+                    score: m.score.clamp(0.1, 1.0),
+                    is_train,
+                });
+            }
+        }
+    }
+
+    if mapped_matches.is_empty() {
+        let applied_deltas = frames
+            .iter()
+            .enumerate()
+            .map(|(i, f)| FramePoseDelta {
+                frame_id: f.id().to_string(),
+                delta_x_m: f.pose().position.x - orig_poses[i].0,
+                delta_y_m: f.pose().position.y - orig_poses[i].1,
+                delta_yaw_deg: f.pose().yaw_deg - orig_poses[i].2,
+            })
+            .collect();
+
+        return PoseRefinementReport {
+            matcher: tie_file.matcher.clone(),
+            total_matches,
+            applied_deltas,
+            ..Default::default()
+        };
+    }
+
+    // Estimar vectores unitarios de dirección de vuelo (vx, vy)
+    let mut flight_dir: Vec<(f64, f64)> = Vec::with_capacity(n_frames);
+    for i in 0..n_frames {
+        let (vx, vy) = if i + 1 < n_frames {
+            let dx = frames[i + 1].pose().position.x - frames[i].pose().position.x;
+            let dy = frames[i + 1].pose().position.y - frames[i].pose().position.y;
+            let len = dx.hypot(dy);
+            if len > 0.1 {
+                (dx / len, dy / len)
+            } else if i > 0 {
+                let dx0 = frames[i].pose().position.x - frames[i - 1].pose().position.x;
+                let dy0 = frames[i].pose().position.y - frames[i - 1].pose().position.y;
+                let len0 = dx0.hypot(dy0);
+                if len0 > 0.1 {
+                    (dx0 / len0, dy0 / len0)
+                } else {
+                    let yaw_rad = frames[i].pose().yaw_deg.to_radians();
+                    (yaw_rad.sin(), yaw_rad.cos())
+                }
+            } else {
+                let yaw_rad = frames[i].pose().yaw_deg.to_radians();
+                (yaw_rad.sin(), yaw_rad.cos())
+            }
+        } else if i > 0 {
+            let dx = frames[i].pose().position.x - frames[i - 1].pose().position.x;
+            let dy = frames[i].pose().position.y - frames[i - 1].pose().position.y;
+            let len = dx.hypot(dy);
+            if len > 0.1 {
+                (dx / len, dy / len)
+            } else {
+                let yaw_rad = frames[i].pose().yaw_deg.to_radians();
+                (yaw_rad.sin(), yaw_rad.cos())
+            }
+        } else {
+            let yaw_rad = frames[i].pose().yaw_deg.to_radians();
+            (yaw_rad.sin(), yaw_rad.cos())
+        };
+        flight_dir.push((vx, vy));
+    }
+
+    // Componentes conexos vía Union-Find para el gauge relativo por bloque
+    let mut parent: Vec<usize> = (0..n_frames).collect();
+    let mut frame_active = vec![false; n_frames];
+    for m in &mapped_matches {
+        if m.is_train {
+            union_sets(&mut parent, m.frame_i, m.frame_j);
+            frame_active[m.frame_i] = true;
+            frame_active[m.frame_j] = true;
+        }
+    }
+
+    let mut comp_members: std::collections::BTreeMap<usize, Vec<usize>> =
+        std::collections::BTreeMap::new();
+    for (i, &active) in frame_active.iter().enumerate() {
+        if active {
+            let root = find_root(&mut parent, i);
+            comp_members.entry(root).or_default().push(i);
+        }
+    }
+
+    // Evaluación inicial de intersecciones DEM
+    let mut evals: Vec<MatchEval> = mapped_matches
+        .iter()
+        .map(|m| {
+            eval_match(
+                m,
+                frames,
+                dem,
+                config.max_residual_m,
+                config.huber_threshold_m,
+            )
+        })
+        .collect();
+
+    let valid_dem_intersections = evals.iter().filter(|e| e.valid).count();
+    let train_matches = mapped_matches.iter().filter(|m| m.is_train).count();
+    let holdout_matches = mapped_matches.iter().filter(|m| !m.is_train).count();
+
+    let (pre_sum_sq, pre_cnt) = evals
+        .iter()
+        .enumerate()
+        .filter(|(k, e)| mapped_matches[*k].is_train && e.valid && e.is_inlier)
+        .fold((0.0, 0usize), |(s, c), (_, e)| (s + e.dist * e.dist, c + 1));
+    let pre_refinement_rmse_m = if pre_cnt > 0 {
+        (pre_sum_sq / pre_cnt as f64).sqrt()
+    } else {
+        0.0
+    };
+
+    let (holdout_pre_sum_sq, holdout_pre_cnt) = evals
+        .iter()
+        .enumerate()
+        .filter(|(k, e)| !mapped_matches[*k].is_train && e.valid && e.is_inlier)
+        .fold((0.0, 0usize), |(s, c), (_, e)| (s + e.dist * e.dist, c + 1));
+    let holdout_pre_rmse_m = if holdout_pre_cnt > 0 {
+        (holdout_pre_sum_sq / holdout_pre_cnt as f64).sqrt()
+    } else {
+        0.0
+    };
+
+    // Resolver offset sistemático global (s_along, s_cross) en la primera pasada
+    let mut global_along_track_m = 0.0;
+    let mut global_cross_track_m = 0.0;
+
+    let has_antiparallel = mapped_matches.iter().any(|m| {
+        if !m.is_train {
+            return false;
+        }
+        let (vxi, vyi) = flight_dir[m.frame_i];
+        let (vxj, vyj) = flight_dir[m.frame_j];
+        vxi * vxj + vyi * vyj < -0.5
+    });
+
+    if has_antiparallel {
+        let mut m00 = 1e-4;
+        let mut m01 = 0.0;
+        let mut m11 = 1e-4;
+        let mut rhs0 = 0.0;
+        let mut rhs1 = 0.0;
+
+        for (m, e) in mapped_matches.iter().zip(&evals) {
+            if m.is_train && e.valid && e.is_inlier {
+                let (vxi, vyi) = flight_dir[m.frame_i];
+                let (vxj, vyj) = flight_dir[m.frame_j];
+                let pxi = vyi;
+                let pyi = -vxi;
+                let pxj = vyj;
+                let pyj = -vxj;
+
+                let dvx = vxi - vxj;
+                let dvy = vyi - vyj;
+                let dpx = pxi - pxj;
+                let dpy = pyi - pyj;
+
+                let w = e.weight;
+                m00 += w * dvx * dvx;
+                m01 += w * dvx * dpx;
+                m11 += w * dpx * dpx;
+                rhs0 += w * dvx * e.dx;
+                rhs1 += w * dpx * e.dx;
+
+                m00 += w * dvy * dvy;
+                m01 += w * dvy * dpy;
+                m11 += w * dpy * dpy;
+                rhs0 += w * dvy * e.dy;
+                rhs1 += w * dpy * e.dy;
+            }
+        }
+
+        let det = m00 * m11 - m01 * m01;
+        if det.abs() > 1e-9 {
+            let s_along = ((rhs0 * m11 - rhs1 * m01) / det).clamp(-2.0, 2.0);
+            let s_cross = ((rhs1 * m00 - rhs0 * m01) / det).clamp(-2.0, 2.0);
+
+            let mut backup_poses = Vec::with_capacity(n_frames);
+            for f in frames.iter() {
+                backup_poses.push(f.pose().clone());
+            }
+
+            for (i, f) in frames.iter_mut().enumerate() {
+                if frame_active[i] {
+                    let (vx, vy) = flight_dir[i];
+                    let px = vy;
+                    let py = -vx;
+                    let shift_x = s_along * vx + s_cross * px;
+                    let shift_y = s_along * vy + s_cross * py;
+                    let p = f.pose_mut();
+                    p.position.x += shift_x;
+                    p.position.y += shift_y;
+                }
+                f.update_basis_and_bbox(dem);
+            }
+
+            let test_evals: Vec<MatchEval> = mapped_matches
+                .iter()
+                .map(|m| {
+                    eval_match(
+                        m,
+                        frames,
+                        dem,
+                        config.max_residual_m,
+                        config.huber_threshold_m,
+                    )
+                })
+                .collect();
+
+            let (test_sum_sq, test_cnt) = test_evals
+                .iter()
+                .enumerate()
+                .filter(|(k, e)| mapped_matches[*k].is_train && e.valid && e.is_inlier)
+                .fold((0.0, 0usize), |(s, c), (_, e)| (s + e.dist * e.dist, c + 1));
+            let test_rmse = if test_cnt > 0 {
+                (test_sum_sq / test_cnt as f64).sqrt()
+            } else {
+                f64::INFINITY
+            };
+
+            if test_rmse < pre_refinement_rmse_m {
+                global_along_track_m = s_along;
+                global_cross_track_m = s_cross;
+                evals = test_evals;
+            } else {
+                for (i, f) in frames.iter_mut().enumerate() {
+                    *f.pose_mut() = backup_poses[i].clone();
+                    f.update_basis_and_bbox(dem);
+                }
+            }
+        }
+    }
+
+    // Inicializar deltas acumulados respecto a las poses originales
+    let mut total_dE = vec![0.0f64; n_frames];
+    let mut total_dN = vec![0.0f64; n_frames];
+    let mut total_dpsi = vec![0.0f64; n_frames];
+
+    for i in 0..n_frames {
+        total_dE[i] = frames[i].pose().position.x - orig_poses[i].0;
+        total_dN[i] = frames[i].pose().position.y - orig_poses[i].1;
+        total_dpsi[i] = frames[i].pose().yaw_deg - orig_poses[i].2;
+    }
+
+    let deg_to_rad = std::f64::consts::PI / 180.0;
+    let mut current_train_rmse = {
+        let (sum_sq, cnt) = evals
+            .iter()
+            .enumerate()
+            .filter(|(k, e)| mapped_matches[*k].is_train && e.valid && e.is_inlier)
+            .fold((0.0, 0usize), |(s, c), (_, e)| (s + e.dist * e.dist, c + 1));
+        if cnt > 0 {
+            (sum_sq / cnt as f64).sqrt()
+        } else {
+            0.0
+        }
+    };
+
+    // 3 iteraciones externas IRLS + DEM re-intersección
+    for _outer in 0..config.outer_iterations {
+        let mut dE = total_dE.clone();
+        let mut dN = total_dN.clone();
+        let mut dpsi = total_dpsi.clone();
+
+        // 15 pasos de relajación Gauss-Seidel amortiguados
+        for _inner in 0..config.inner_steps {
+            for i in 0..n_frames {
+                if !frame_active[i] {
+                    continue;
+                }
+
+                let mut h00 = config.lambda_t;
+                let mut h02 = 0.0;
+                let mut h11 = config.lambda_t;
+                let mut h12 = 0.0;
+                let mut h22 = config.lambda_psi;
+
+                let mut g0 = 0.0;
+                let mut g1 = 0.0;
+                let mut g2 = 0.0;
+
+                let cam_pos_i = frames[i].pose().position;
+
+                for (m, e) in mapped_matches.iter().zip(&evals) {
+                    if !m.is_train || !e.valid || !e.is_inlier {
+                        continue;
+                    }
+                    let w = e.weight;
+                    if m.frame_i == i {
+                        let j = m.frame_j;
+                        let rx_i = e.pt_i.x - cam_pos_i.x;
+                        let ry_i = e.pt_i.y - cam_pos_i.y;
+                        let kx_i = ry_i * deg_to_rad;
+                        let ky_i = -rx_i * deg_to_rad;
+
+                        let rx_j = e.pt_j.x - frames[j].pose().position.x;
+                        let ry_j = e.pt_j.y - frames[j].pose().position.y;
+                        let kx_j = ry_j * deg_to_rad;
+                        let ky_j = -rx_j * deg_to_rad;
+
+                        let target_x = (dE[j] + kx_j * dpsi[j]) + e.dx;
+                        let target_y = (dN[j] + ky_j * dpsi[j]) + e.dy;
+
+                        h00 += w;
+                        h02 += w * kx_i;
+                        h11 += w;
+                        h12 += w * ky_i;
+                        h22 += w * (kx_i * kx_i + ky_i * ky_i);
+
+                        g0 += w * target_x;
+                        g1 += w * target_y;
+                        g2 += w * (kx_i * target_x + ky_i * target_y);
+                    } else if m.frame_j == i {
+                        let j = m.frame_i;
+                        let rx_i = e.pt_j.x - cam_pos_i.x;
+                        let ry_i = e.pt_j.y - cam_pos_i.y;
+                        let kx_i = ry_i * deg_to_rad;
+                        let ky_i = -rx_i * deg_to_rad;
+
+                        let rx_j = e.pt_i.x - frames[j].pose().position.x;
+                        let ry_j = e.pt_i.y - frames[j].pose().position.y;
+                        let kx_j = ry_j * deg_to_rad;
+                        let ky_j = -rx_j * deg_to_rad;
+
+                        let target_x = (dE[j] + kx_j * dpsi[j]) - e.dx;
+                        let target_y = (dN[j] + ky_j * dpsi[j]) - e.dy;
+
+                        h00 += w;
+                        h02 += w * kx_i;
+                        h11 += w;
+                        h12 += w * ky_i;
+                        h22 += w * (kx_i * kx_i + ky_i * ky_i);
+
+                        g0 += w * target_x;
+                        g1 += w * target_y;
+                        g2 += w * (kx_i * target_x + ky_i * target_y);
+                    }
+                }
+
+                let det = h00 * (h11 * h22 - h12 * h12) - h02 * (h02 * h11);
+                if det.abs() > 1e-9 {
+                    let c00 = h11 * h22 - h12 * h12;
+                    let c01 = h02 * h12;
+                    let c02 = -h02 * h11;
+                    let c11 = h00 * h22 - h02 * h02;
+                    let c12 = -h00 * h12;
+                    let c22 = h00 * h11;
+
+                    let new_dE = (c00 * g0 + c01 * g1 + c02 * g2) / det;
+                    let new_dN = (c01 * g0 + c11 * g1 + c12 * g2) / det;
+                    let new_dpsi = (c02 * g0 + c12 * g1 + c22 * g2) / det;
+
+                    dE[i] = (1.0 - config.damping) * dE[i] + config.damping * new_dE;
+                    dN[i] = (1.0 - config.damping) * dN[i] + config.damping * new_dN;
+                    dpsi[i] = (1.0 - config.damping) * dpsi[i] + config.damping * new_dpsi;
+                }
+            }
+
+            // Aplicar proyección cíclica (Dykstra) sobre intersección de media cero y cubo [-clamp, clamp]
+            for members in comp_members.values() {
+                if members.len() >= 2 {
+                    let count = members.len() as f64;
+                    for _ in 0..4 {
+                        let sum_e: f64 = members.iter().map(|&idx| dE[idx]).sum();
+                        let sum_n: f64 = members.iter().map(|&idx| dN[idx]).sum();
+                        let mean_e = sum_e / count;
+                        let mean_n = sum_n / count;
+                        for &idx in members {
+                            dE[idx] = (dE[idx] - mean_e)
+                                .clamp(-config.clamp_shift_m, config.clamp_shift_m);
+                            dN[idx] = (dN[idx] - mean_n)
+                                .clamp(-config.clamp_shift_m, config.clamp_shift_m);
+                            dpsi[idx] =
+                                dpsi[idx].clamp(-config.clamp_yaw_deg, config.clamp_yaw_deg);
+                        }
+                    }
+                    let sum_e: f64 = members.iter().map(|&idx| dE[idx]).sum();
+                    let sum_n: f64 = members.iter().map(|&idx| dN[idx]).sum();
+                    let mean_e = sum_e / count;
+                    let mean_n = sum_n / count;
+                    for &idx in members {
+                        dE[idx] -= mean_e;
+                        dN[idx] -= mean_n;
+                    }
+                }
+            }
+
+            for (i, &active) in frame_active.iter().enumerate() {
+                if !active {
+                    dE[i] = 0.0;
+                    dN[i] = 0.0;
+                    dpsi[i] = 0.0;
+                }
+            }
+        }
+
+        // Salvaguarda monótona: evaluar tentativamente sobre el DEM
+        let mut backup_poses = Vec::with_capacity(n_frames);
+        for f in frames.iter() {
+            backup_poses.push(f.pose().clone());
+        }
+
+        for (i, f) in frames.iter_mut().enumerate() {
+            let p = f.pose_mut();
+            p.position.x = orig_poses[i].0 + dE[i];
+            p.position.y = orig_poses[i].1 + dN[i];
+            p.yaw_deg = orig_poses[i].2 + dpsi[i];
+            f.update_basis_and_bbox(dem);
+        }
+
+        let new_evals: Vec<MatchEval> = mapped_matches
+            .iter()
+            .map(|m| {
+                eval_match(
+                    m,
+                    frames,
+                    dem,
+                    config.max_residual_m,
+                    config.huber_threshold_m,
+                )
+            })
+            .collect();
+
+        let (sum_sq, cnt) = new_evals
+            .iter()
+            .enumerate()
+            .filter(|(k, e)| mapped_matches[*k].is_train && e.valid && e.is_inlier)
+            .fold((0.0, 0usize), |(s, c), (_, e)| (s + e.dist * e.dist, c + 1));
+        let new_train_rmse = if cnt > 0 {
+            (sum_sq / cnt as f64).sqrt()
+        } else {
+            f64::INFINITY
+        };
+
+        if new_train_rmse < current_train_rmse {
+            current_train_rmse = new_train_rmse;
+            total_dE = dE;
+            total_dN = dN;
+            total_dpsi = dpsi;
+            evals = new_evals;
+        } else {
+            // Revertir a poses previas si no mejora
+            for (i, f) in frames.iter_mut().enumerate() {
+                *f.pose_mut() = backup_poses[i].clone();
+                f.update_basis_and_bbox(dem);
+            }
+        }
+    }
+
+    // Evaluación final sobre train y holdout
+    let final_evals: Vec<MatchEval> = mapped_matches
+        .iter()
+        .map(|m| {
+            eval_match(
+                m,
+                frames,
+                dem,
+                config.max_residual_m,
+                config.huber_threshold_m,
+            )
+        })
+        .collect();
+
+    let (post_sum_sq, post_cnt) = final_evals
+        .iter()
+        .enumerate()
+        .filter(|(k, e)| mapped_matches[*k].is_train && e.valid && e.is_inlier)
+        .fold((0.0, 0usize), |(s, c), (_, e)| (s + e.dist * e.dist, c + 1));
+    let post_refinement_rmse_m = if post_cnt > 0 {
+        (post_sum_sq / post_cnt as f64).sqrt()
+    } else {
+        0.0
+    };
+
+    let (holdout_post_sum_sq, holdout_post_cnt) = final_evals
+        .iter()
+        .enumerate()
+        .filter(|(k, e)| !mapped_matches[*k].is_train && e.valid && e.is_inlier)
+        .fold((0.0, 0usize), |(s, c), (_, e)| (s + e.dist * e.dist, c + 1));
+    let holdout_post_rmse_m = if holdout_post_cnt > 0 {
+        (holdout_post_sum_sq / holdout_post_cnt as f64).sqrt()
+    } else {
+        0.0
+    };
+
+    let valid_count = final_evals.iter().filter(|e| e.valid).count();
+    let inlier_count = final_evals
+        .iter()
+        .filter(|e| e.valid && e.dist <= config.huber_threshold_m)
+        .count();
+    let inlier_ratio = if valid_count > 0 {
+        inlier_count as f64 / valid_count as f64
+    } else {
+        0.0
+    };
+
+    let saturated_count = total_dE
+        .iter()
+        .zip(&total_dN)
+        .zip(&total_dpsi)
+        .filter(|((&e, &n), &p)| {
+            e.abs() >= config.clamp_shift_m - 0.01
+                || n.abs() >= config.clamp_shift_m - 0.01
+                || p.abs() >= config.clamp_yaw_deg - 0.01
+        })
+        .count();
+    let saturated_frames_pct = if n_frames > 0 {
+        (saturated_count as f64 / n_frames as f64) * 100.0
+    } else {
+        0.0
+    };
+
+    let applied_deltas = frames
+        .iter()
+        .enumerate()
+        .map(|(i, f)| FramePoseDelta {
+            frame_id: f.id().to_string(),
+            delta_x_m: f.pose().position.x - orig_poses[i].0,
+            delta_y_m: f.pose().position.y - orig_poses[i].1,
+            delta_yaw_deg: f.pose().yaw_deg - orig_poses[i].2,
+        })
+        .collect();
+
+    // Actualizar basis y bbox finales para todos los fotogramas
+    for f in frames.iter_mut() {
+        f.update_basis_and_bbox(dem);
+    }
+
+    PoseRefinementReport {
+        matcher: tie_file.matcher.clone(),
+        total_matches,
+        valid_dem_intersections,
+        train_matches,
+        holdout_matches,
+        iterations: config.outer_iterations,
+        global_along_track_m,
+        global_cross_track_m,
+        pre_refinement_rmse_m,
+        post_refinement_rmse_m,
+        holdout_pre_rmse_m,
+        holdout_post_rmse_m,
+        inlier_ratio,
+        saturated_frames_pct,
+        applied_deltas,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3008,5 +4047,621 @@ mod tests {
         assert_eq!(img_odd.sample_bicubic(8.4, 6.4), Some([128, 128, 128]));
         // Fuera de rango nativo -> None
         assert!(img.sample_bilinear(8.1, 2.0).is_none());
+    }
+
+    #[test]
+    fn test_pose_refinement_zero_noise_synthetic_flat_dem() {
+        let dem_data = vec![0.0f32; 200 * 200];
+        let dem = DemWindow::new(200, 200, 0.0, 200.0, 1.0, 1.0, dem_data, None, 0.0);
+        let intrinsics = CameraIntrinsics {
+            width: 640,
+            height: 512,
+            fx: 500.0,
+            fy: 500.0,
+            cx: 320.0,
+            cy: 256.0,
+            dewarp: None,
+        };
+
+        // Poses verdaderas
+        let true_pos1 = Vector3::new(95.0, 100.0, 100.0);
+        let true_pos2 = Vector3::new(105.0, 100.0, 100.0);
+        let basis1 = CameraBasis::from_gimbal(0.0, -90.0, 0.0);
+        let basis2 = CameraBasis::from_gimbal(0.0, -90.0, 0.0);
+
+        // Generar puntos sintéticos en el solape sobre Z=0
+        let mut matches = Vec::new();
+        for gx in &[98.0, 100.0, 102.0] {
+            for gy in &[96.0, 98.0, 100.0, 102.0, 104.0] {
+                let g_pt = Vector3::new(*gx, *gy, 0.0);
+                if let (Some((u1, v1)), Some((u2, v2))) = (
+                    basis1.world_to_pixel(g_pt, true_pos1, &intrinsics),
+                    basis2.world_to_pixel(g_pt, true_pos2, &intrinsics),
+                ) {
+                    matches.push(TiePointMatch {
+                        frame_i: "DJI_0001".into(),
+                        frame_j: "DJI_0002".into(),
+                        u_i: u1 + 0.5,
+                        v_i: v1 + 0.5,
+                        u_j: u2 + 0.5,
+                        v_j: v2 + 0.5,
+                        score: 1.0,
+                        covisibility: 1.0,
+                    });
+                }
+            }
+        }
+        assert!(matches.len() >= 10);
+
+        // Perturbar fotogramas simétricamente con media cero
+        let shift = 0.5;
+        let mut f1 = ImageFrame::new(
+            "DJI_0001".into(),
+            CameraPose {
+                position: Vector3::new(true_pos1.x + shift, true_pos1.y, true_pos1.z),
+                yaw_deg: 0.0,
+                pitch_deg: -90.0,
+                roll_deg: 0.0,
+            },
+            intrinsics,
+            vec![20.0f32; 640 * 512],
+            640,
+            512,
+        );
+        let mut f2 = ImageFrame::new(
+            "DJI_0002".into(),
+            CameraPose {
+                position: Vector3::new(true_pos2.x - shift, true_pos2.y, true_pos2.z),
+                yaw_deg: 0.0,
+                pitch_deg: -90.0,
+                roll_deg: 0.0,
+            },
+            intrinsics,
+            vec![20.0f32; 640 * 512],
+            640,
+            512,
+        );
+        f1.update_basis_and_bbox(&dem);
+        f2.update_basis_and_bbox(&dem);
+
+        let mut frames = vec![f1, f2];
+        let tie_file = TiePointFile {
+            schema_version: "1.0".into(),
+            matcher: "synthetic".into(),
+            coordinate_convention: "standard".into(),
+            matches,
+            pose_overrides: vec![],
+        };
+
+        let config = PoseRefinementConfig {
+            lambda_t: 0.05,
+            lambda_psi: 1.0,
+            ..Default::default()
+        };
+        let report = refine_poses_with_tie_points_config(&mut frames, &dem, &tie_file, &config);
+
+        assert!(report.pre_refinement_rmse_m > 0.8);
+        assert!(
+            report.post_refinement_rmse_m < 0.2 * report.pre_refinement_rmse_m,
+            "post_rmse ({:.4}) no fue < 0.2 * pre_rmse ({:.4})",
+            report.post_refinement_rmse_m,
+            report.pre_refinement_rmse_m
+        );
+        assert!(report.post_refinement_rmse_m < 0.15);
+        assert!(report.inlier_ratio > 0.95);
+
+        // Verificar recuperación de la posición original
+        let err1 = (frames[0].pose().position.x - true_pos1.x).abs();
+        let err2 = (frames[1].pose().position.x - true_pos2.x).abs();
+        assert!(err1 < 0.15, "Error en frame 1 demasiado alto: {}", err1);
+        assert!(err2 < 0.15, "Error en frame 2 demasiado alto: {}", err2);
+    }
+
+    #[test]
+    fn test_pose_refinement_regularized_bounded_shift_and_datum() {
+        let dem_data = vec![0.0f32; 200 * 200];
+        let dem = DemWindow::new(200, 200, 0.0, 200.0, 1.0, 1.0, dem_data, None, 0.0);
+        let intrinsics = CameraIntrinsics {
+            width: 640,
+            height: 512,
+            fx: 500.0,
+            fy: 500.0,
+            cx: 320.0,
+            cy: 256.0,
+            dewarp: None,
+        };
+
+        let mut f1 = ImageFrame::new(
+            "F1".into(),
+            CameraPose {
+                position: Vector3::new(95.0, 100.0, 100.0),
+                yaw_deg: 0.0,
+                pitch_deg: -90.0,
+                roll_deg: 0.0,
+            },
+            intrinsics,
+            vec![20.0f32; 640 * 512],
+            640,
+            512,
+        );
+        let mut f2 = ImageFrame::new(
+            "F2".into(),
+            CameraPose {
+                position: Vector3::new(105.0, 100.0, 100.0),
+                yaw_deg: 0.0,
+                pitch_deg: -90.0,
+                roll_deg: 0.0,
+            },
+            intrinsics,
+            vec![20.0f32; 640 * 512],
+            640,
+            512,
+        );
+        f1.update_basis_and_bbox(&dem);
+        f2.update_basis_and_bbox(&dem);
+
+        // Perturbación grande sintética que forzaría saturación
+        let mut matches = Vec::new();
+        for i in 0..15 {
+            matches.push(TiePointMatch {
+                frame_i: "F1".into(),
+                frame_j: "F2".into(),
+                u_i: 320.0 + (i as f64) * 2.0,
+                v_i: 256.0,
+                u_j: 320.0 - (i as f64) * 2.0 + 50.0, // Gran discrepancia
+                v_j: 256.0,
+                score: 1.0,
+                covisibility: 1.0,
+            });
+        }
+
+        let mut frames = vec![f1, f2];
+        let tie_file = TiePointFile {
+            schema_version: "1.0".into(),
+            matcher: "stress".into(),
+            coordinate_convention: "standard".into(),
+            matches,
+            pose_overrides: vec![],
+        };
+
+        let config = PoseRefinementConfig::default();
+        let report = refine_poses_with_tie_points_config(&mut frames, &dem, &tie_file, &config);
+
+        for delta in &report.applied_deltas {
+            assert!(
+                delta.delta_x_m.abs() <= config.clamp_shift_m + 1e-4,
+                "Delta X violó clamp: {}",
+                delta.delta_x_m
+            );
+            assert!(
+                delta.delta_y_m.abs() <= config.clamp_shift_m + 1e-4,
+                "Delta Y violó clamp: {}",
+                delta.delta_y_m
+            );
+            assert!(
+                delta.delta_yaw_deg.abs() <= config.clamp_yaw_deg + 1e-4,
+                "Delta Yaw violó clamp: {}",
+                delta.delta_yaw_deg
+            );
+        }
+
+        // Preservación estricta del datum de media cero en el componente
+        let sum_dx: f64 = report.applied_deltas.iter().map(|d| d.delta_x_m).sum();
+        let sum_dy: f64 = report.applied_deltas.iter().map(|d| d.delta_y_m).sum();
+        assert!(
+            sum_dx.abs() < 1e-6,
+            "Media de delta X no fue cero: {}",
+            sum_dx
+        );
+        assert!(
+            sum_dy.abs() < 1e-6,
+            "Media de delta Y no fue cero: {}",
+            sum_dy
+        );
+    }
+
+    #[test]
+    fn test_pose_refinement_robust_huber_outliers() {
+        let dem_data = vec![0.0f32; 200 * 200];
+        let dem = DemWindow::new(200, 200, 0.0, 200.0, 1.0, 1.0, dem_data, None, 0.0);
+        let intrinsics = CameraIntrinsics {
+            width: 640,
+            height: 512,
+            fx: 500.0,
+            fy: 500.0,
+            cx: 320.0,
+            cy: 256.0,
+            dewarp: None,
+        };
+
+        let true_pos1 = Vector3::new(95.0, 100.0, 100.0);
+        let true_pos2 = Vector3::new(105.0, 100.0, 100.0);
+        let basis1 = CameraBasis::from_gimbal(0.0, -90.0, 0.0);
+        let basis2 = CameraBasis::from_gimbal(0.0, -90.0, 0.0);
+
+        let mut matches = Vec::new();
+        // 15 inliers consistentes
+        for i in 0..15 {
+            let gx = 97.0 + (i as f64) * 0.4;
+            let gy = 96.0 + (i as f64) * 0.5;
+            let g_pt = Vector3::new(gx, gy, 0.0);
+            let (u1, v1) = basis1.world_to_pixel(g_pt, true_pos1, &intrinsics).unwrap();
+            let (u2, v2) = basis2.world_to_pixel(g_pt, true_pos2, &intrinsics).unwrap();
+            matches.push(TiePointMatch {
+                frame_i: "F1".into(),
+                frame_j: "F2".into(),
+                u_i: u1 + 0.5,
+                v_i: v1 + 0.5,
+                u_j: u2 + 0.5,
+                v_j: v2 + 0.5,
+                score: 0.95,
+                covisibility: 1.0,
+            });
+        }
+
+        // 5 outliers groseros (25% del total de 20) en la banda de 4m a 20m
+        for i in 0..5 {
+            matches.push(TiePointMatch {
+                frame_i: "F1".into(),
+                frame_j: "F2".into(),
+                u_i: 300.0 + (i as f64) * 5.0,
+                v_i: 250.0,
+                u_j: 300.0 + (i as f64) * 5.0 + 35.0, // Discrepancia grande
+                v_j: 250.0 + 20.0,
+                score: 0.9,
+                covisibility: 1.0,
+            });
+        }
+        assert_eq!(matches.len(), 20);
+
+        // Perturbación simétrica suave de 0.4m
+        let mut f1 = ImageFrame::new(
+            "F1".into(),
+            CameraPose {
+                position: Vector3::new(true_pos1.x + 0.4, true_pos1.y, true_pos1.z),
+                yaw_deg: 0.0,
+                pitch_deg: -90.0,
+                roll_deg: 0.0,
+            },
+            intrinsics,
+            vec![20.0f32; 640 * 512],
+            640,
+            512,
+        );
+        let mut f2 = ImageFrame::new(
+            "F2".into(),
+            CameraPose {
+                position: Vector3::new(true_pos2.x - 0.4, true_pos2.y, true_pos2.z),
+                yaw_deg: 0.0,
+                pitch_deg: -90.0,
+                roll_deg: 0.0,
+            },
+            intrinsics,
+            vec![20.0f32; 640 * 512],
+            640,
+            512,
+        );
+        f1.update_basis_and_bbox(&dem);
+        f2.update_basis_and_bbox(&dem);
+
+        let mut frames = vec![f1, f2];
+        let tie_file = TiePointFile {
+            schema_version: "1.0".into(),
+            matcher: "huber_test".into(),
+            coordinate_convention: "standard".into(),
+            matches,
+            pose_overrides: vec![],
+        };
+
+        let config = PoseRefinementConfig {
+            lambda_t: 0.1,
+            ..Default::default()
+        };
+        let report = refine_poses_with_tie_points_config(&mut frames, &dem, &tie_file, &config);
+
+        assert!(report.inlier_ratio >= 0.70);
+        assert!(
+            report.post_refinement_rmse_m < report.pre_refinement_rmse_m,
+            "post_rmse ({:.4}) no mejoró sobre pre_rmse ({:.4})",
+            report.post_refinement_rmse_m,
+            report.pre_refinement_rmse_m
+        );
+    }
+
+    #[test]
+    fn test_pose_refinement_collinear_flight_line_stability() {
+        let dem_data = vec![0.0f32; 200 * 200];
+        let dem = DemWindow::new(200, 200, 0.0, 200.0, 1.0, 1.0, dem_data, None, 0.0);
+        let intrinsics = CameraIntrinsics {
+            width: 640,
+            height: 512,
+            fx: 500.0,
+            fy: 500.0,
+            cx: 320.0,
+            cy: 256.0,
+            dewarp: None,
+        };
+
+        // 3 fotogramas en una única línea de vuelo hacia el Norte
+        let pos1 = Vector3::new(100.0, 90.0, 100.0);
+        let pos2 = Vector3::new(100.0, 105.0, 100.0);
+        let pos3 = Vector3::new(100.0, 120.0, 100.0);
+
+        let mut frames = vec![
+            ImageFrame::new(
+                "F1".into(),
+                CameraPose {
+                    position: pos1,
+                    yaw_deg: 0.0,
+                    pitch_deg: -90.0,
+                    roll_deg: 0.0,
+                },
+                intrinsics,
+                vec![20.0f32; 640 * 512],
+                640,
+                512,
+            ),
+            ImageFrame::new(
+                "F2".into(),
+                CameraPose {
+                    position: pos2,
+                    yaw_deg: 0.0,
+                    pitch_deg: -90.0,
+                    roll_deg: 0.0,
+                },
+                intrinsics,
+                vec![20.0f32; 640 * 512],
+                640,
+                512,
+            ),
+            ImageFrame::new(
+                "F3".into(),
+                CameraPose {
+                    position: pos3,
+                    yaw_deg: 0.0,
+                    pitch_deg: -90.0,
+                    roll_deg: 0.0,
+                },
+                intrinsics,
+                vec![20.0f32; 640 * 512],
+                640,
+                512,
+            ),
+        ];
+
+        for f in &mut frames {
+            f.update_basis_and_bbox(&dem);
+        }
+
+        let mut matches = Vec::new();
+        for i in 0..6 {
+            matches.push(TiePointMatch {
+                frame_i: "F1".into(),
+                frame_j: "F2".into(),
+                u_i: 320.0,
+                v_i: 200.0 + (i as f64) * 10.0,
+                u_j: 320.0,
+                v_j: 250.0 + (i as f64) * 10.0,
+                score: 1.0,
+                covisibility: 1.0,
+            });
+            matches.push(TiePointMatch {
+                frame_i: "F2".into(),
+                frame_j: "F3".into(),
+                u_i: 320.0,
+                v_i: 200.0 + (i as f64) * 10.0,
+                u_j: 320.0,
+                v_j: 250.0 + (i as f64) * 10.0,
+                score: 1.0,
+                covisibility: 1.0,
+            });
+        }
+
+        let tie_file = TiePointFile {
+            schema_version: "1.0".into(),
+            matcher: "collinear".into(),
+            coordinate_convention: "standard".into(),
+            matches,
+            pose_overrides: vec![],
+        };
+
+        let report = refine_poses_with_tie_points(&mut frames, &dem, &tie_file);
+
+        // Sin pasadas antiparalelas, el offset sistemático no debe aplicarse
+        assert_eq!(report.global_along_track_m, 0.0);
+        assert_eq!(report.global_cross_track_m, 0.0);
+        assert_eq!(report.iterations, 3);
+        for d in &report.applied_deltas {
+            assert!(d.delta_x_m.is_finite());
+            assert!(d.delta_y_m.is_finite());
+            assert!(d.delta_yaw_deg.is_finite());
+        }
+    }
+
+    #[test]
+    fn test_pose_refinement_disconnected_components_and_zero_matches() {
+        let dem_data = vec![0.0f32; 200 * 200];
+        let dem = DemWindow::new(200, 200, 0.0, 200.0, 1.0, 1.0, dem_data, None, 0.0);
+        let intrinsics = CameraIntrinsics {
+            width: 640,
+            height: 512,
+            fx: 500.0,
+            fy: 500.0,
+            cx: 320.0,
+            cy: 256.0,
+            dewarp: None,
+        };
+
+        let mut frames = vec![
+            ImageFrame::new(
+                "F1".into(),
+                CameraPose {
+                    position: Vector3::new(90.0, 100.0, 100.0),
+                    yaw_deg: 0.0,
+                    pitch_deg: -90.0,
+                    roll_deg: 0.0,
+                },
+                intrinsics,
+                vec![20.0f32; 640 * 512],
+                640,
+                512,
+            ),
+            ImageFrame::new(
+                "F2".into(),
+                CameraPose {
+                    position: Vector3::new(100.0, 100.0, 100.0),
+                    yaw_deg: 0.0,
+                    pitch_deg: -90.0,
+                    roll_deg: 0.0,
+                },
+                intrinsics,
+                vec![20.0f32; 640 * 512],
+                640,
+                512,
+            ),
+            ImageFrame::new(
+                "F3_ISOLATED".into(),
+                CameraPose {
+                    position: Vector3::new(180.0, 180.0, 100.0),
+                    yaw_deg: 10.0,
+                    pitch_deg: -90.0,
+                    roll_deg: 0.0,
+                },
+                intrinsics,
+                vec![20.0f32; 640 * 512],
+                640,
+                512,
+            ),
+        ];
+
+        for f in &mut frames {
+            f.update_basis_and_bbox(&dem);
+        }
+
+        // Solo F1 y F2 tienen observaciones entre sí; F3 no tiene ninguna
+        let matches = vec![TiePointMatch {
+            frame_i: "F1".into(),
+            frame_j: "F2".into(),
+            u_i: 350.0,
+            v_i: 256.0,
+            u_j: 310.0,
+            v_j: 256.0,
+            score: 1.0,
+            covisibility: 1.0,
+        }];
+
+        let tie_file = TiePointFile {
+            schema_version: "1.0".into(),
+            matcher: "disconnected".into(),
+            coordinate_convention: "standard".into(),
+            matches,
+            pose_overrides: vec![],
+        };
+
+        let report = refine_poses_with_tie_points(&mut frames, &dem, &tie_file);
+
+        // F3 aislado no debe mutar en absoluto
+        let d3 = report
+            .applied_deltas
+            .iter()
+            .find(|d| d.frame_id == "F3_ISOLATED")
+            .unwrap();
+        assert_eq!(d3.delta_x_m, 0.0);
+        assert_eq!(d3.delta_y_m, 0.0);
+        assert_eq!(d3.delta_yaw_deg, 0.0);
+
+        // F1 y F2 preservan el datum del componente
+        let d1 = report
+            .applied_deltas
+            .iter()
+            .find(|d| d.frame_id == "F1")
+            .unwrap();
+        let d2 = report
+            .applied_deltas
+            .iter()
+            .find(|d| d.frame_id == "F2")
+            .unwrap();
+        assert!((d1.delta_x_m + d2.delta_x_m).abs() < 1e-6);
+
+        // Caso B: Cero matches absoluto -> fallback de identidad grácil
+        let empty_tie = TiePointFile {
+            schema_version: "1.0".into(),
+            matcher: "empty".into(),
+            coordinate_convention: "standard".into(),
+            matches: vec![],
+            pose_overrides: vec![],
+        };
+        let rep_empty = refine_poses_with_tie_points(&mut frames, &dem, &empty_tie);
+        assert_eq!(rep_empty.iterations, 0);
+        for d in &rep_empty.applied_deltas {
+            assert_eq!(d.delta_x_m, 0.0);
+            assert_eq!(d.delta_y_m, 0.0);
+            assert_eq!(d.delta_yaw_deg, 0.0);
+        }
+    }
+
+    #[test]
+    fn test_deserialize_golden_tie_point_file_contract() {
+        let json_data = r#"{
+            "schema_version": "1.0",
+            "matcher": "flexglue",
+            "coordinate_convention": "corner_0.5_distorted_native_px",
+            "enu_origin": [6.25, -75.58, 1450.0],
+            "matches": [
+                {
+                    "frame_i": "DJI_0001_V.JPG",
+                    "frame_j": "DJI_0002_V.JPG",
+                    "u_i": 1245.5,
+                    "v_i": 890.25,
+                    "u_j": 1260.1,
+                    "v_j": 880.75,
+                    "score": 0.9542,
+                    "covisibility": 0.8812
+                }
+            ],
+            "pose_overrides": [
+                {
+                    "frame_id": "DJI_0001_T.JPG",
+                    "delta_x_m": 0.45,
+                    "delta_y_m": -0.22,
+                    "delta_yaw_deg": 0.12
+                }
+            ],
+            "timing_breakdown": {
+                "warmup_s": 0.05,
+                "keypoint_extract_s": 0.12,
+                "descriptor_s": 0.35,
+                "matcher_s": 0.18,
+                "total_matching_s": 0.70,
+                "peak_vram_mb": 0.0
+            },
+            "diagnostics": {
+                "num_images": 2,
+                "num_pairs_evaluated": 1,
+                "num_pairs_matched": 1,
+                "total_inliers": 1,
+                "device": "CPU",
+                "is_thermal": false
+            }
+        }"#;
+
+        let parsed: TiePointFile =
+            serde_json::from_str(json_data).expect("Fallo al deserializar TiePointFile en Rust");
+        assert_eq!(parsed.schema_version, "1.0");
+        assert_eq!(parsed.matcher, "flexglue");
+        assert_eq!(
+            parsed.coordinate_convention,
+            "corner_0.5_distorted_native_px"
+        );
+        assert_eq!(parsed.matches.len(), 1);
+        assert_eq!(parsed.matches[0].frame_i, "DJI_0001_V.JPG");
+        assert_eq!(parsed.matches[0].frame_j, "DJI_0002_V.JPG");
+        assert!((parsed.matches[0].u_i - 1245.5).abs() < 1e-6);
+        assert!((parsed.matches[0].score - 0.9542).abs() < 1e-6);
+
+        assert_eq!(parsed.pose_overrides.len(), 1);
+        assert_eq!(parsed.pose_overrides[0].frame_id, "DJI_0001_T.JPG");
+        assert!((parsed.pose_overrides[0].delta_x_m - 0.45).abs() < 1e-6);
+        assert!((parsed.pose_overrides[0].delta_yaw_deg - 0.12).abs() < 1e-6);
     }
 }
